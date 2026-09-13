@@ -741,6 +741,8 @@ test("plot-set handoff includes every selected template and requires plotting al
   assert.equal(selected[0]?.templateId, "gsea-scatter");
   assert.equal(selected[0]?.scientificQuestion, "哪些通路被激活或抑制？");
   assert.equal(selected[1]?.templateId, "enrichment-bar");
+  assert.equal((selected[0]?.materialState as Record<string, unknown>).sourcePack, "global-store");
+  assert.equal((selected[1]?.materialState as Record<string, unknown>).sourcePack, "global-figureya");
   assert.equal(authorization.mustProcessAllSelected, true);
   assert.match(text, /Process every taskItems entry/u);
   assert.doesNotMatch(text, /Review only this one selected candidate/u);
@@ -767,6 +769,7 @@ test("confirmed single plot task uses the same v2 task shape and preserves its r
   assert.equal(preview.previewReceipt, "receipt-one");
   assert.equal(preview.appPreviewViewed, true);
   assert.equal((items[0]?.materialState as Record<string, unknown>).status, "unknown");
+  assert.equal((items[0]?.materialState as Record<string, unknown>).sourcePack, "global-store");
   assert.equal((items[0]?.executionState as Record<string, unknown>).status, "not_started");
 });
 

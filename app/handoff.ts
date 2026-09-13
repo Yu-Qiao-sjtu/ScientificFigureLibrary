@@ -84,6 +84,13 @@ export function compactPlotCandidate(candidate: Candidate) {
   };
 }
 
+function sourcePackForProvider(providerId: string) {
+  if (providerId === "org.figureya.module") return "global-figureya";
+  if (providerId === "io.github.jarxunlai.personal-figures") return "global-open-modules";
+  if (providerId === "org.scientificfigurelibrary.local") return "global-store";
+  return "provider-default";
+}
+
 export function buildPlotTaskHandoff(options: {
   resultSetId: string;
   candidates: Candidate[];
@@ -111,7 +118,7 @@ export function buildPlotTaskHandoff(options: {
         },
     materialState: {
       status: "unknown",
-      sourcePack: "global-open-modules",
+      sourcePack: sourcePackForProvider(candidate.providerId),
       networkRequired: "unknown",
     },
     executionState: { status: "not_started" },
