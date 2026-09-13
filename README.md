@@ -107,6 +107,11 @@ publish a Release before searching. Full contract: [docs/PROTOCOL.md](docs/PROTO
 
 Requires Node.js 22+:
 
+Pull requests run tests, type checking, build and MCP smoke across Linux, Windows
+and macOS. See [basic CI](docs/CI.md) for the matrix and merge-check setup.
+Maintainers can also configure the optional [AI comment bot](docs/COMMENT_BOT.md)
+for manually requested issue suggestions and PR reviews.
+
 ```bash
 git clone https://github.com/xuzhougeng/ScientificFigureLibrary.git
 cd ScientificFigureLibrary
