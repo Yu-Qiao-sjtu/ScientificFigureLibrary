@@ -668,6 +668,9 @@ test("standard server unifies Local Published and FigureYa while hiding Working/
         updateModelContextFallback: true,
         fallbackHandoffMode: "headless_exact_review",
         fallbackCandidateLimit: 1,
+        plotTaskHandoffSchema: "figure-library.app-plot-task-handoff.v2",
+        plotTaskItemsField: "taskItems",
+        openModulesSourcePackDirectory: "source-packs/open-modules",
         modelVisibleSearchIncludesImageData: false,
         componentThumbnailMetaKey: "candidatePreviews",
       });

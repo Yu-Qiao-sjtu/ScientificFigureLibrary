@@ -4,4 +4,4 @@ interface:
   icon_small: "./assets/sfl-logo.svg"
   icon_large: "./assets/sfl-logo.svg"
   brand_color: "#246C4E"
-  default_prompt: "Use $figure-library to search reviewed scientific-figure templates, inspect an exact preview, and prepare a safe materialization plan."
+  default_prompt: "Use $figure-library to search scientific-figure templates, accept a single or batch plot task as taskItems[], process every selected item, prefer the global Source Pack caches (source-packs/open-modules and source-packs/figureya), use verified Gitee/GitHub archives only when needed, and report preview, material, execution, and visual-validation states separately. When the user explicitly asks to use a selected template, complete the exact preview/confirmation sequence, then Plan/Apply materialization; do not use the compatibility preview tool as a substitute."

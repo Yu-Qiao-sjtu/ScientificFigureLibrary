@@ -6,8 +6,12 @@ export function mountPlottingTips(document: Document, parent: HTMLElement, optio
 }) {
   const tips = document.createElement("details");
   tips.className = "plotting-tips";
-  let collapsed = false;
-  try { collapsed = options.storage?.getItem("sfl.plotting-tips.collapsed") === "true"; } catch { /* Restricted host storage. */ }
+  // Keep the workbench compact on first open. A previously saved explicit
+  // preference still wins: "false" means the user chose to keep it open.
+  let collapsed = true;
+  try {
+    collapsed = options.storage?.getItem("sfl.plotting-tips.collapsed") !== "false";
+  } catch { /* Restricted host storage. */ }
   tips.open = !collapsed;
   const summary = document.createElement("summary");
   summary.textContent = "科研绘图提示 · 自然语言就能表达需求";

@@ -27,4 +27,11 @@ Fonts, palettes, devices and render QA have one authority: this plugin's [figure
 
 ## Handoff
 
-Return the adapted script, input/output mapping, important parameter decisions and truthful execution status. Do not claim a successful render from source inspection alone. Description drafting belongs to [figure-description](../figure-description/SKILL.md); SFL operations belong to [figure-library](../figure-library/SKILL.md).
+When the Host supplies a unified SFL plot task, process every `taskItems[]`
+entry and return an independent input/output mapping for each one; a single
+item is not a different workflow. Preserve each item's preview, material and
+execution state, treating missing values as unknown. A Source Pack, Gitee
+mirror, or successful materialization proves neither scientific validity nor a
+successful render. Return the adapted script, important parameter decisions
+and truthful execution status. Do not claim a successful render from source
+inspection alone. Description drafting belongs to [figure-description](../figure-description/SKILL.md); SFL operations belong to [figure-library](../figure-library/SKILL.md).

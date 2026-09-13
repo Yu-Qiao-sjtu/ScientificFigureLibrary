@@ -455,7 +455,9 @@ Agent, and does not update model context.
 After search, the Agent must stop and wait for user selection. It must not call
 exact preview for every candidate or substitute a backend `view_image` pass.
 Only an explicit request such as “帮我选择模板” permits limited visual review
-of a small top-ranked subset.
+of a small top-ranked subset. Once the user submits a plotting task, the Agent
+must process every selected task item rather than treating the items as
+alternatives.
 
 When Host `serverTools` is available, **查看精确预览** calls App-only
 `figure_library_preview_exact`, which returns the exact image and one-time
@@ -477,6 +479,17 @@ plan. It must not inspect other candidates, Apply, or claim that the exact
 image loaded in the App. If `updateModelContext` is also absent, selection
 handoff remains disabled with an explicit capability error.
 
+The current plotting-task handoff is
+`figure-library.app-plot-task-handoff.v2`. It contains one `plotTask` with a
+`taskItems[]` array; a single-item task and a batch use the same structure. Each
+item carries its exact selector and independent `previewState`, `materialState`,
+and `executionState`. Missing facts are `unknown`. The handoff expresses the
+user's plotting intent, but it does not itself create a preview receipt, approve
+Materialize, authorize code execution, or authorize dependency installation.
+Older v1 `agent_plot_set` and `headless_exact_review` messages are compatibility
+inputs for Hosts and must be normalized conservatively without inventing those
+facts.
+
 `figure_library_describe` publishes these App/headless tool names, the
 component thumbnail `_meta` key, the model-image exclusion flag, receipt gate,
 and diagnostics export/resource capabilities so Hosts can inspect the exact
@@ -488,7 +501,10 @@ presented as sidebar display evidence.
 
 ## Exact materialization
 
-Materialization protocol v2 is preview/confirm/plan/apply only:
+Materialization protocol v2 is preview/confirm/plan/apply only. A plotting task
+may be submitted before every exact preview has been viewed; the Host/Agent
+performs the required preview/confirmation sequence for each item before
+planning Materialize:
 
 1. Search and retain `resultSetId`, `providerId`, and `exactSelector`.
 2. Choose the capability-aware confirmation path:
@@ -546,9 +562,12 @@ and a hash of the physical target path without storing that absolute path.
 Replay revalidates the current provider identity and every target byte; a
 pre-created or copied lock without the Receipt is never reported as success.
 
-Any materialization failure is terminal. Do not retry the same call, change
-mode/provider/downloader, fetch a full repository, or generate a substitute.
-Report the error and wait for a new user decision.
+Project-target, selector, extraction, and integrity failures are terminal. Do
+not retry the same call, change mode/provider, use a shell downloader, fetch a
+full repository, or generate a substitute. Gitee-to-GitHub fallback is part of
+one configured archive acquisition policy, not an Agent retry. A verified
+archive whose global cache write fails may still complete the current project,
+but must report `cachePersisted=false` and the exact persistence error.
 
 Personal module materialization uses `figure-library.module-template-lock.v1`.
 Its lock records the Provider/module identity, source and archive repository
@@ -560,15 +579,47 @@ the cleaned ZIP. The single personal content repository is the source for both
 `modules/<moduleId>/` and `archives/<moduleId>.zip`; no second archive
 repository is consulted.
 
-The personal Source Pack uses
-`figure-library.module-source-pack.v1`, contains only selected archive ZIPs and
-its manifest, and is never bundled into an SFL plugin. With a supplied Source
-Pack, Provider/module/commit/path/byte/hash mismatch is a hard failure; SFL
-does not silently switch to a network source. Without a Source Pack, network
-materialization uses only the Catalog-derived
-`raw.githubusercontent.com/<owner>/<repo>/<archiveCommit>/<archivePath>` URL,
-rejects redirects away from that origin, verifies the response size and
-SHA-256, validates the complete ZIP inventory, and executes no module file.
+The Open Figure Modules Source Pack uses
+`figure-library.module-source-pack.v1`, is stored by default at
+`<globalLibraryRoot>/source-packs/open-modules/`, contains selected archive ZIPs
+and its manifest, and is never bundled into an SFL plugin. A valid partial pack
+may omit a requested module and continue to configured archive sources when
+networking is allowed. A corrupt manifest, unsafe inventory, or
+Provider/module/commit/path/byte/hash mismatch is a hard failure. Network
+resolution tries the global local mirror override, then the official Gitee
+source shipped in the bundled Catalog, then any other Catalog-configured
+sources, before the canonical GitHub archive. The bundled default is
+`https://gitee.com/livenever/ScientificFigureLibrary-personal/raw/{archiveCommit}/{archivePath}`.
+Every source is checked for its
+allowed HTTPS origin, fixed commit/path, response size, SHA-256 and complete ZIP
+inventory; no module file is executed. A successfully verified network archive
+is persisted to the global Source Pack and an extracted template cache; the ZIP
+is retained. If cache persistence fails after verification, the current project
+may still complete but the result must report `cachePersisted=false` and the
+exact persistence error.
+
+An optional machine-local override (not required for the official Gitee
+mirror) lives at
+`<globalLibraryRoot>/network/mirrors.json`:
+
+```json
+{
+  "openModules": {
+    "sources": [
+      {
+        "kind": "gitee-mirror",
+        "urlTemplate": "https://gitee.com/<owner>/<repo>/raw/{archiveCommit}/{archivePath}",
+        "priority": 1
+      }
+    ]
+  }
+}
+```
+
+The override changes transport order only; it cannot change the canonical
+repository, commit, path, size, or digest. The mirror is attempted before the
+canonical GitHub archive, and a failed or mismatched mirror is rejected before
+fallback.
 
 Maintainer commands are offline and support `--check` and `--write`:
 
@@ -887,11 +938,18 @@ FigureYaSourcePack/
 ```
 
 Pass an absolute directory as `sourcePackDir` or set
-`FIGUREYA_SOURCE_PACK_DIR`. Archive resolution is:
+`FIGUREYA_SOURCE_PACK_DIR`; when omitted, the bound global Library automatically
+uses `source-packs/figureya/`. Archive resolution is:
 
 1. local Source Pack;
 2. bases configured in `FIGUREYA_ARCHIVE_BASE_URLS`;
 3. the commit-pinned FigureYa-compressed archive on GitHub.
+
+When a network archive is verified during Materialize Apply, SFL writes it back
+to the global FigureYa Source Pack, keeps the ZIP, updates
+`figureya-source-pack.manifest.json`, and creates an extracted `templates/`
+cache. A cache-write failure is reported as `cachePersisted=false` while the
+already verified current project may still complete.
 
 Create a small transport pack from a local checkout:
 

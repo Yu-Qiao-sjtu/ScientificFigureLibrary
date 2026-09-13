@@ -10,6 +10,7 @@ import {
   materializeModuleTemplate,
   validateModuleArchive,
 } from "../src/module-materialize.ts";
+import { defaultOpenModulesSourcePackDir } from "../src/open-modules.ts";
 import {
   exactSelectorDigest,
   moduleArchiveExactSelector,
@@ -128,6 +129,14 @@ async function writePack(root: string, fixture: ReturnType<typeof fixtureCatalog
     }],
   })}\n`);
 }
+
+test("Open Modules Source Pack defaults to the global Library sibling", () => {
+  const globalRoot = "E:\\ScientificFigureLibrary";
+  assert.equal(
+    defaultOpenModulesSourcePackDir(globalRoot),
+    path.resolve(globalRoot, "source-packs", "open-modules"),
+  );
+});
 
 test("personal module template/full materialization uses Source Pack and never executes code", async (t) => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "sfl-module-materialize-"));
@@ -272,4 +281,173 @@ test("personal module network acquisition uses only the fixed raw commit URL and
     observedUrl,
     `https://raw.githubusercontent.com/jarxunlai/ScientificFigureLibrary-personal/${archiveCommit}/archives/materialize-module-fixture.zip`,
   );
+});
+
+test("Open Modules prefers the global Gitee mirror, persists the archive, and reuses the Source Pack", async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "sfl-open-modules-cache-"));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const assets = path.join(root, "assets");
+  const sourcePack = path.join(root, "source-packs", "open-modules");
+  const fixture = await writeIndex(assets);
+  await fs.mkdir(path.join(root, "network"), { recursive: true });
+  await fs.writeFile(
+    path.join(root, "network", "mirrors.json"),
+    `${JSON.stringify({
+      openModules: {
+        sources: [{
+          kind: "gitee-mirror",
+          urlTemplate: "https://gitee.com/example/ScientificFigureLibrary-personal/raw/{archiveCommit}/{archivePath}",
+          priority: 1,
+        }],
+      },
+    })}\n`,
+  );
+  const index = await ModuleCatalogIndex.load(assets, { expectedProviderId: PERSONAL_MODULE_PROVIDER_ID });
+  const previousFetch = globalThis.fetch;
+  const observed: string[] = [];
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    observed.push(String(input));
+    assert.equal(init?.redirect, "manual");
+    return new Response(fixture.archiveBytes, {
+      status: 200,
+      headers: { "content-length": String(fixture.archiveBytes.byteLength) },
+    });
+  }) as typeof fetch;
+  t.after(() => {
+    globalThis.fetch = previousFetch;
+  });
+
+  const first = await materializeModuleTemplate({
+    providerId: PERSONAL_MODULE_PROVIDER_ID,
+    index,
+    module: fixture.module,
+    destination: path.join(root, "first-output"),
+    mode: "template",
+    sourcePackDir: sourcePack,
+    allowNetwork: true,
+  });
+  assert.equal(first.archiveSource, "network");
+  assert.equal(first.transportSource, "gitee-mirror");
+  assert.equal(first.cachePersisted, true);
+  assert.equal(observed.length, 1);
+  assert.match(observed[0]!, /gitee\.com\/example\/ScientificFigureLibrary-personal\/raw/u);
+  assert.equal(
+    await fs.readFile(path.join(sourcePack, fixture.module.archive.path)).then((bytes) => digest(bytes)),
+    fixture.archiveSha256,
+  );
+  assert.equal(
+    await fs.stat(path.join(sourcePack, "templates", fixture.module.moduleId, "upstream", "code", "example.R")).then(() => true),
+    true,
+  );
+
+  const second = await materializeModuleTemplate({
+    providerId: PERSONAL_MODULE_PROVIDER_ID,
+    index,
+    module: fixture.module,
+    destination: path.join(root, "second-output"),
+    mode: "template",
+    sourcePackDir: sourcePack,
+    allowNetwork: false,
+  });
+  assert.equal(second.archiveSource, "source-pack");
+  assert.equal(second.transportSource, "source-pack");
+  assert.equal(observed.length, 1);
+});
+
+test("Open Modules accepts Gitee's signed raw.giteeusercontent redirect without weakening GitHub policy", async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "sfl-open-modules-redirect-"));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const assets = path.join(root, "assets");
+  const sourcePack = path.join(root, "source-packs", "open-modules");
+  const fixture = await writeIndex(assets);
+  await fs.mkdir(path.join(root, "network"), { recursive: true });
+  await fs.writeFile(
+    path.join(root, "network", "mirrors.json"),
+    `${JSON.stringify({
+      openModules: {
+        sources: [{
+          kind: "gitee-mirror",
+          urlTemplate: "https://gitee.com/example/ScientificFigureLibrary-personal/raw/{archiveCommit}/{archivePath}",
+          priority: 1,
+        }],
+      },
+    })}\n`,
+  );
+  const index = await ModuleCatalogIndex.load(assets, { expectedProviderId: PERSONAL_MODULE_PROVIDER_ID });
+  const previousFetch = globalThis.fetch;
+  const observed: Array<{ url: string; redirect: RequestRedirect | undefined }> = [];
+  const signedUrl = `https://raw.giteeusercontent.com/example/ScientificFigureLibrary-personal/raw/${archiveCommit}/archives/materialize-module-fixture.zip?metadata=signed&signature=test`;
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input);
+    observed.push({ url, redirect: init?.redirect });
+    if (url.startsWith("https://gitee.com/")) {
+      return new Response(null, { status: 302, headers: { location: signedUrl } });
+    }
+    assert.equal(url, signedUrl);
+    assert.equal(init?.redirect, "error");
+    return new Response(fixture.archiveBytes, {
+      status: 200,
+      headers: { "content-length": String(fixture.archiveBytes.byteLength) },
+    });
+  }) as typeof fetch;
+  t.after(() => {
+    globalThis.fetch = previousFetch;
+  });
+  const result = await materializeModuleTemplate({
+    providerId: PERSONAL_MODULE_PROVIDER_ID,
+    index,
+    module: fixture.module,
+    destination: path.join(root, "output"),
+    mode: "template",
+    sourcePackDir: sourcePack,
+    allowNetwork: true,
+  });
+  assert.equal(result.transportSource, "gitee-mirror");
+  assert.deepEqual(observed.map((item) => item.redirect), ["manual", "error"]);
+});
+
+test("Open Modules falls back from a mismatched Gitee archive to the canonical GitHub archive", async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "sfl-open-modules-fallback-"));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const assets = path.join(root, "assets");
+  const sourcePack = path.join(root, "source-packs", "open-modules");
+  const fixture = await writeIndex(assets);
+  await fs.mkdir(path.join(root, "network"), { recursive: true });
+  await fs.writeFile(
+    path.join(root, "network", "mirrors.json"),
+    `${JSON.stringify({
+      openModules: {
+        sources: [{
+          kind: "gitee-mirror",
+          urlTemplate: "https://gitee.com/example/ScientificFigureLibrary-personal/raw/{archiveCommit}/{archivePath}",
+          priority: 1,
+        }],
+      },
+    })}\n`,
+  );
+  const index = await ModuleCatalogIndex.load(assets, { expectedProviderId: PERSONAL_MODULE_PROVIDER_ID });
+  const previousFetch = globalThis.fetch;
+  const observed: string[] = [];
+  globalThis.fetch = (async (input: string | URL | Request) => {
+    const url = String(input);
+    observed.push(url);
+    const bytes = url.includes("gitee.com") ? new Uint8Array([1, 2, 3]) : fixture.archiveBytes;
+    return new Response(bytes, { status: 200, headers: { "content-length": String(bytes.byteLength) } });
+  }) as typeof fetch;
+  t.after(() => {
+    globalThis.fetch = previousFetch;
+  });
+  const result = await materializeModuleTemplate({
+    providerId: PERSONAL_MODULE_PROVIDER_ID,
+    index,
+    module: fixture.module,
+    destination: path.join(root, "output"),
+    mode: "template",
+    sourcePackDir: sourcePack,
+    allowNetwork: true,
+  });
+  assert.equal(result.transportSource, "github-upstream");
+  assert.equal(observed.length, 2);
+  assert.match(observed[0]!, /gitee\.com/u);
+  assert.match(observed[1]!, /raw\.githubusercontent\.com/u);
 });

@@ -138,6 +138,29 @@ test("module Catalog validates exact provider/repository, files, previews, and S
   );
 });
 
+test("module Catalog accepts transport mirrors without changing canonical repository identity", () => {
+  const value = catalog();
+  value.provider.archiveSources = [
+    {
+      kind: "gitee-mirror",
+      urlTemplate: "https://gitee.com/example/ScientificFigureLibrary-personal/raw/{archiveCommit}/{archivePath}",
+      priority: 1,
+    },
+    {
+      kind: "github-upstream",
+      urlTemplate: "https://raw.githubusercontent.com/jarxunlai/ScientificFigureLibrary-personal/{archiveCommit}/{archivePath}",
+      priority: 10,
+    },
+  ];
+  const parsed = parseModuleCatalog(value, {
+    expectedProviderId: PERSONAL_MODULE_PROVIDER_ID,
+    expectedRepository: "jarxunlai/ScientificFigureLibrary-personal",
+  });
+  assert.equal(parsed.provider.repository, "jarxunlai/ScientificFigureLibrary-personal");
+  assert.equal(parsed.provider.archiveSources?.[0]?.kind, "gitee-mirror");
+  assert.equal(parsed.provider.archiveSources?.[1]?.kind, "github-upstream");
+});
+
 test("module Catalog rejects stale, unsafe, duplicate, private, and non-public identities", () => {
   const base = entry();
   assert.throws(

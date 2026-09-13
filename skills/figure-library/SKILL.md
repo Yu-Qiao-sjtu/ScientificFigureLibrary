@@ -11,7 +11,7 @@ exact template into a project.
 
 Version 0.6.1 adds the bundled Open Figure Modules Provider while keeping
 materialization protocol v2, review truthfulness, and the transport image
-adapter. Default search is Local Published, FigureYa, bundled Personal Figure
+adapter. Default search is Local Published, FigureYa, bundled Open Figure
 Modules, then opted-in dynamic personal sources. Community remains readable
 for an explicit `providerId`, but is frozen and excluded from default search.
 The MCP App may request fullscreen or
@@ -19,7 +19,9 @@ pip when the Host advertises those display modes. Wisp, Codex, and Claude
 plugin packages all ship this Skill beside the same MCP server. Optional
 `scientificQuestion` explains why a figure is worth drawing; it is not
 `description` or `visualProfile`. There is no receipt-free materialization
-path.
+path. A user may submit a plotting task before looking at every exact preview,
+but Materialize planning still requires the corresponding one-time preview
+receipt.
 
 ## Bundled companion Skills
 
@@ -31,6 +33,8 @@ Use the copies shipped beside this Skill, not similarly named Host installations
   [figure-organization](../figure-organization/SKILL.md), then
   [figure-style](../figure-style/SKILL.md). Preserve reference fidelity by default.
 - Pure search/preview/materialization does not start prose writing or plotting.
+  An explicit plot-task handoff may request Host/Agent execution; the SFL
+  server itself still never executes plotting code.
 - Host execution tools and the project R/Python environment are still needed. A
   plugin installation is not approval to execute code or install packages.
 
@@ -359,8 +363,14 @@ repackaging the snapshot. Complete ZIPs are not bundled. 0.6.4 and earlier
 plugins will not auto-update this Catalog. Each personal module
 uses the `module-archive.v1` selector kind and binds the Provider ID, module ID, source repository/commit, archive
 repository/commit/path, archive bytes and SHA-256, primary preview identity,
-Catalog SHA-256, and `template` or `full` mode. Publisher/Gallery review and
-execution facts are displayed separately from SFL Local review and execution.
+Catalog SHA-256, and `template` or `full` mode. Complete archives are not
+bundled into the plugin. At materialization time, prefer the global
+`source-packs/open-modules` Source Pack, then the bundled official Gitee
+mirror (with any configured local override taking precedence), then the fixed
+GitHub archive. A verified network archive is retained
+in the global Source Pack together with a derived extracted template cache;
+the ZIP is never deleted. Publisher/Gallery review and execution facts are
+displayed separately from SFL Local review and execution.
 
 Maintainers use the offline commands below from the SFL checkout. They never
 create a GitHub repository, commit, push, run R, or modify the Gallery:
@@ -442,11 +452,31 @@ anything during preview.
   candidate. Both headless routes cannot prove that the user actually saw an
   App image; say so in any acceptance report.
 
-If App `updateModelContext` reports `handoffMode=agent_plot_set`, the user
-selected 1..N templates to draw. Plot every `selectedCandidates` item in the
-current science project. Keep each `providerId` and `exactSelector`
-unchanged. Do not plot only the first item, do not inspect unselected
-candidates, and do not publish. Materialize or load each template separately.
+An explicit request such as “use this selected template to complete the plot”
+is explicit delegation for that one exact candidate. On a headless route, call
+`figure_library_preview_exact_headless` once and then
+`figure_library_confirm_selection_headless` immediately; do not substitute the
+compatibility `figure_library_preview` tool and do not stop after displaying a
+preview. Continue to the normal Plan/Apply gate, where the archive acquisition
+and global Source Pack persistence occur.
+
+If App `updateModelContext` reports
+`schema=figure-library.app-plot-task-handoff.v2` and
+`handoffMode=agent_plot_task`, the user submitted one plotting task containing
+all `taskItems`. Process every item in the current science project. Keep each
+`providerId` and `exactSelector` unchanged. Do not process unselected
+candidates, publish, execute downloaded template code, or install dependencies
+without separate approval. Single-item and multi-item handoffs use this same
+structure; only `taskItems.length` differs.
+
+For each item, preserve the explicit `previewState`, `materialState`, and
+`executionState`. Missing facts are `unknown`, not confirmation. Prepare or
+load each selected template separately, then map it to the current project's
+data and output requirements. A v1 `agent_plot_set` or
+`headless_exact_review` handoff from an older Host is a compatibility input and
+must be normalized conservatively to this task model; it must not be treated as
+having a receipt, ready material, or execution authorization that it did not
+carry.
 
 Both paths return a session-local, opaque, single-use `previewReceipt` bound to
 the exact result set, provider, selector digest, preview hash, catalog/Library
@@ -464,10 +494,17 @@ Materialize only after the preview/confirmation sequence above.
 1. Call `figure_library_plan_materialize` with the unchanged `providerId`,
    `exactSelector`, the returned `previewReceipt`, an absolute `destination`,
    optional absolute `sourcePackDir`, and the intended `allowNetwork` policy.
-   For bundled Open Figure Modules this directory must contain
-   `module-source-pack.manifest.json`; for FigureYa it must contain the legacy
-   FigureYa Source Pack manifest. A supplied but mismatched Source Pack fails
-   closed and is not silently bypassed with a network download.
+   When `sourcePackDir` is omitted, Open Figure Modules use the bound global
+   Library root's `source-packs/open-modules` directory; FigureYa uses the
+   sibling `source-packs/figureya` directory. For Open Figure Modules these
+   directories contain `module-source-pack.manifest.json`; for FigureYa they
+   contain its Source Pack manifest. A verified network archive is persisted to
+   the corresponding global Source Pack (ZIP retained, extracted `templates/`
+   cache created) during Apply; a cache-write failure is reported as
+   `cachePersisted=false` while the verified current project may still finish.
+   A supplied corrupt or mismatched Source
+   Pack fails closed; an otherwise valid partial pack may continue to the
+   configured archive sources when networking is allowed.
    Missing receipt is `preview_required`; do not retry without preview.
 2. Show provider, full exact selector, preview confirmation mode,
    `<destination>/<templateId>` target, and acquisition policy. Wait for
@@ -489,10 +526,13 @@ replay requires the matching authoritative Receipt in the global Library and
 revalidates the provider selector plus every materialized file. Never fabricate
 or copy a lock to bypass a missing/expired plan.
 
-Any materialization error is a hard stop. Do not retry the same call, switch
-mode/provider/source, use a shell downloader, fetch a complete repository,
-recreate the reference, or generate a substitute/demo plot. Report the exact
-error and wait for a new user instruction.
+Project-target, selector, extraction, and integrity errors are hard stops. Do
+not retry the same call, switch mode/provider, use a shell downloader, fetch a
+complete repository, recreate the reference, or generate a substitute/demo
+plot. Gitee-to-GitHub fallback is an internal part of one configured archive
+acquisition policy, not an Agent retry. If a verified network archive cannot be
+persisted to the global Source Pack, the current project may still complete,
+but report `cachePersisted=false` and the exact persistence error.
 
 ## 7. Manage signed personal Providers
 

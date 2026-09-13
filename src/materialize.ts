@@ -28,6 +28,21 @@ const SHA256 = /^[a-f0-9]{64}$/u;
 export type { MaterializeMode } from "./types.ts";
 export type ArchiveSource = "source-pack" | "network" | "existing";
 
+export interface FigureYaMaterializationResult {
+  target: string;
+  providerId: string;
+  exactSelector: FigureYaExactSelector;
+  plannedSelector: FigureYaExactSelector;
+  archiveSource: ArchiveSource;
+  archiveLocation?: string;
+  sha256: string;
+  cachePersisted?: boolean;
+  cachePersistenceError?: string;
+  files: string[];
+  fileInventory: StoredFile[];
+  replayed: boolean;
+}
+
 interface SourcePackArchive {
   moduleId: string;
   file: string;
@@ -331,6 +346,157 @@ async function readSourcePackArchive(
   throw new Error(`missing ${module.moduleId}.zip`);
 }
 
+function sourcePackEntry(module: FigureYaModule, identity: { sha256: string; gitBlobSha1: string }): SourcePackArchive {
+  const archiveBytes = module.archiveBytes;
+  if (typeof archiveBytes !== "number" || !Number.isSafeInteger(archiveBytes) || archiveBytes <= 0) {
+    throw new Error(`FigureYa archive bytes are missing for ${module.moduleId}`);
+  }
+  return {
+    moduleId: module.moduleId,
+    file: `archives/${module.moduleId}.zip`,
+    bytes: archiveBytes,
+    gitBlobSha1: identity.gitBlobSha1,
+    sha256: identity.sha256,
+  };
+}
+
+async function atomicWriteFile(file: string, bytes: Uint8Array | string) {
+  const temporary = `${file}.tmp-${randomUUID()}`;
+  await fs.writeFile(temporary, bytes, { flag: "wx" });
+  try {
+    await fs.rename(temporary, file);
+  } catch (error) {
+    await fs.rm(temporary, { force: true }).catch(() => undefined);
+    throw error;
+  }
+}
+
+async function acquireSourcePackLock(lockDirectory: string) {
+  await fs.mkdir(path.dirname(lockDirectory), { recursive: true });
+  const started = Date.now();
+  while (true) {
+    try {
+      await fs.mkdir(lockDirectory);
+      return;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+      if (Date.now() - started > 30_000) {
+        throw new Error(`FigureYa Source Pack is busy: ${lockDirectory}`);
+      }
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+  }
+}
+
+async function persistFigureYaCache(
+  root: string,
+  catalog: FigureYaCatalog,
+  module: FigureYaModule,
+  bytes: Uint8Array,
+  identity: { sha256: string; gitBlobSha1: string },
+) {
+  const directory = path.resolve(root);
+  const lockDirectory = path.join(path.resolve(directory, "..", ".."), "locks", "figureya-source-pack");
+  await acquireSourcePackLock(lockDirectory);
+  try {
+    await fs.mkdir(directory, { recursive: true });
+    const manifestPath = path.join(directory, "figureya-source-pack.manifest.json");
+    let manifest: SourcePackManifest;
+    try {
+      const raw = await fs.readFile(manifestPath, "utf8");
+      manifest = validateFigureYaSourcePackManifest(JSON.parse(raw) as unknown, catalog);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      const existing = await fs.readdir(directory, { withFileTypes: true });
+      const allowedEmptyDirectories = new Set(["archives", "templates"]);
+      for (const entry of existing) {
+        if (!entry.isDirectory() || !allowedEmptyDirectories.has(entry.name)) {
+          throw new Error(`FigureYa Source Pack manifest is missing at ${manifestPath}`);
+        }
+        if ((await fs.readdir(path.join(directory, entry.name))).length > 0) {
+          throw new Error(`FigureYa Source Pack manifest is missing at ${manifestPath}`);
+        }
+      }
+      manifest = {
+        schema: "figure-library.source-pack.v2",
+        providerId: FIGUREYA_PROVIDER_ID,
+        archiveRepository: catalog.compressed.repository,
+        archiveCommit: catalog.compressed.commit,
+        archives: [],
+      };
+    }
+
+    const entry = sourcePackEntry(module, identity);
+    const existingEntry = manifest.archives.find((item) => item.moduleId === module.moduleId);
+    if (
+      existingEntry &&
+      (existingEntry.file !== entry.file ||
+        existingEntry.bytes !== entry.bytes ||
+        existingEntry.sha256 !== entry.sha256 ||
+        existingEntry.gitBlobSha1 !== entry.gitBlobSha1)
+    ) {
+      throw new Error(`FigureYa Source Pack entry for ${module.moduleId} differs from the Catalog`);
+    }
+
+    const archivePath = path.resolve(directory, ...entry.file.split("/"));
+    const relativeArchive = path.relative(directory, archivePath);
+    if (!relativeArchive || relativeArchive.startsWith("..") || path.isAbsolute(relativeArchive)) {
+      throw new Error(`unsafe FigureYa Source Pack archive path: ${entry.file}`);
+    }
+    await fs.mkdir(path.dirname(archivePath), { recursive: true });
+    try {
+      const existing = new Uint8Array(await fs.readFile(archivePath));
+      verifyArchive(module, existing, entry);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      await atomicWriteFile(archivePath, bytes);
+    }
+
+    if (!existingEntry) {
+      manifest = {
+        ...manifest,
+        schema: "figure-library.source-pack.v2",
+        archives: [...manifest.archives, entry].sort((left, right) => left.moduleId.localeCompare(right.moduleId)),
+      };
+      await atomicWriteFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+    }
+
+    const cacheRoot = path.join(directory, "templates", module.moduleId);
+    try {
+      const stat = await fs.lstat(cacheRoot);
+      if (stat.isSymbolicLink() || !stat.isDirectory()) {
+        throw new Error(`FigureYa template cache is not a regular directory: ${cacheRoot}`);
+      }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      const staging = `${cacheRoot}.tmp-${randomUUID()}`;
+      await fs.mkdir(staging, { recursive: true });
+      try {
+        await extract(bytes, staging, module, "full");
+        await fs.writeFile(
+          path.join(staging, "cache.json"),
+          `${JSON.stringify({
+            schema: "figure-library.figureya-cache.v1",
+            moduleId: module.moduleId,
+            sourceCommit: catalog.figureya.commit,
+            archiveCommit: catalog.compressed.commit,
+            archiveSha256: identity.sha256,
+          }, null, 2)}\n`,
+          { flag: "wx" },
+        );
+        await fs.mkdir(path.dirname(cacheRoot), { recursive: true });
+        await fs.rename(staging, cacheRoot);
+      } catch (error) {
+        await fs.rm(staging, { recursive: true, force: true }).catch(() => undefined);
+        throw error;
+      }
+    }
+    return { archivePath, templateCachePath: cacheRoot };
+  } finally {
+    await fs.rm(lockDirectory, { recursive: true, force: true }).catch(() => undefined);
+  }
+}
+
 function archiveUrls(catalog: FigureYaCatalog, moduleId: string) {
   const mirrors = (process.env.FIGUREYA_ARCHIVE_BASE_URLS ?? "")
     .split(/[,;\n]/u)
@@ -403,6 +569,19 @@ export async function inspectFigureYaSourcePack(
   try {
     pack = await loadSourcePack(directory, catalog);
   } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return {
+        configured: false,
+        directory: path.resolve(directory),
+        manifestValid: false,
+        ready: false,
+        availableTemplates: [] as string[],
+        invalidTemplates: [] as string[],
+        missingCount: expectedCount,
+        availableBytes: 0,
+        archiveCommit: catalog.compressed.commit,
+      };
+    }
     return {
       configured: true,
       directory: path.resolve(directory),
@@ -704,7 +883,8 @@ export async function materializeFigureYaTemplate(options: {
   planDigest?: string;
   sourcePackDir?: string;
   allowNetwork?: boolean;
-}) {
+  persistNetworkArchive?: boolean;
+}): Promise<FigureYaMaterializationResult> {
   const { catalog, module, mode } = options;
   if (!module.archiveAvailable) {
     throw new Error(`no pinned archive is available for ${module.moduleId}`);
@@ -749,6 +929,27 @@ export async function materializeFigureYaTemplate(options: {
       sourcePackDir: options.sourcePackDir,
       allowNetwork: options.allowNetwork ?? true,
     });
+    let cachePersisted = acquired.source === "source-pack";
+    let cachePersistenceError: string | undefined;
+    if (
+      acquired.source === "network" &&
+      options.persistNetworkArchive !== false &&
+      options.sourcePackDir
+    ) {
+      try {
+        await persistFigureYaCache(
+          options.sourcePackDir,
+          catalog,
+          module,
+          acquired.bytes,
+          acquired.identity,
+        );
+        cachePersisted = true;
+      } catch (error) {
+        cachePersisted = false;
+        cachePersistenceError = error instanceof Error ? error.message : String(error);
+      }
+    }
     const exactSelector = resolvedSelector(catalog, module, mode, acquired.identity.sha256);
     const upstreamFiles = await extract(acquired.bytes, staging, module, mode);
     const assets = await createNormalizedAssets(staging, upstreamFiles);
@@ -843,6 +1044,8 @@ export async function materializeFigureYaTemplate(options: {
       archiveSource: acquired.source,
       archiveLocation: acquired.location,
       sha256: acquired.identity.sha256,
+      cachePersisted,
+      ...(cachePersistenceError ? { cachePersistenceError } : {}),
       files: fileInventory.map((file) => file.file),
       fileInventory,
       replayed: false,

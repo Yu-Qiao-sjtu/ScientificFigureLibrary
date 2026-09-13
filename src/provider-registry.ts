@@ -35,6 +35,7 @@ import {
   exactSelectorDigest,
   localPublishedExactSelector,
 } from "./providers.ts";
+import { defaultOpenModulesSourcePackDir } from "./open-modules.ts";
 import type {
   ExactTemplateSelector,
   FigureYaExactSelector,
@@ -128,6 +129,9 @@ export interface VerifiedProviderPayload {
   files: string[];
   materializationSource: string;
   archiveSha256?: string;
+  transportSource?: string;
+  cachePersisted?: boolean;
+  cachePersistenceError?: string;
 }
 
 export interface ProviderMaterializedBinding {
@@ -701,8 +705,9 @@ export class FigureYaProviderAdapter implements ProviderAdapter {
       destination: stagingDirectory,
       mode: resolved.exactSelector.identity.mode,
       exactSelector: resolved.exactSelector,
-      sourcePackDir: operation.sourcePackDir,
+      sourcePackDir: operation.sourcePackDir ?? context.sourcePackDir,
       allowNetwork,
+      persistNetworkArchive: true,
       operationId: operation.operationId,
       planDigest: operation.planDigest,
     });
@@ -713,6 +718,8 @@ export class FigureYaProviderAdapter implements ProviderAdapter {
       files: applied.files,
       materializationSource: applied.archiveSource,
       archiveSha256: applied.sha256,
+      ...(applied.cachePersisted !== undefined ? { cachePersisted: applied.cachePersisted } : {}),
+      ...(applied.cachePersistenceError ? { cachePersistenceError: applied.cachePersistenceError } : {}),
     };
   }
 
@@ -980,8 +987,9 @@ export class ModuleCatalogProviderAdapter implements ProviderAdapter {
       destination,
       mode: resolved.exactSelector.identity.mode,
       exactSelector: resolved.exactSelector,
-      sourcePackDir: operation.sourcePackDir,
+      sourcePackDir: operation.sourcePackDir ?? context.moduleSourcePackDir,
       allowNetwork,
+      persistNetworkArchive: true,
       operationId: operation.operationId,
       planDigest: operation.planDigest,
     });
@@ -992,6 +1000,9 @@ export class ModuleCatalogProviderAdapter implements ProviderAdapter {
       files: applied.files,
       materializationSource: applied.archiveSource,
       archiveSha256: applied.sha256,
+      ...(applied.transportSource ? { transportSource: applied.transportSource } : {}),
+      ...(applied.cachePersisted !== undefined ? { cachePersisted: applied.cachePersisted } : {}),
+      ...(applied.cachePersistenceError ? { cachePersistenceError: applied.cachePersistenceError } : {}),
     };
   }
 
@@ -1354,5 +1365,30 @@ export function createProviderContext(
   catalog: CatalogIndex,
   options: Omit<ProviderContext, "library" | "catalog"> = {},
 ): ProviderContext {
-  return { library, catalog, ...options };
+  const libraryRoot = library.snapshot.root;
+  return {
+    library,
+    catalog,
+    sourcePackDir:
+      options.sourcePackDir ??
+      process.env.FIGUREYA_SOURCE_PACK_DIR?.trim() ??
+      path.join(libraryRoot, "source-packs", "figureya"),
+    moduleSourcePackDir:
+      options.moduleSourcePackDir ??
+      process.env.PERSONAL_MODULE_SOURCE_PACK_DIR?.trim() ??
+      defaultOpenModulesSourcePackDir(libraryRoot),
+    ...options,
+  };
+}
+
+export function defaultProviderSourcePackDirectory(providerId: string, libraryRoot: string) {
+  if (providerId === PERSONAL_MODULE_PROVIDER_ID) {
+    const configured = process.env.PERSONAL_MODULE_SOURCE_PACK_DIR?.trim();
+    return configured ? path.resolve(configured) : defaultOpenModulesSourcePackDir(libraryRoot);
+  }
+  if (providerId === FIGUREYA_PROVIDER_ID) {
+    const configured = process.env.FIGUREYA_SOURCE_PACK_DIR?.trim();
+    return configured ? path.resolve(configured) : path.resolve(libraryRoot, "source-packs", "figureya");
+  }
+  return undefined;
 }

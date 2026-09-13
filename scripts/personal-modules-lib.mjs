@@ -14,6 +14,17 @@ export const DEFAULT_SNAPSHOT_ROOT = path.join(CORE_ROOT, "assets", "personal-mo
 export const PROVIDER_ID = "io.github.jarxunlai.personal-figures";
 export const SOURCE_LABEL = "Open Figure Modules";
 export const REPOSITORY = "jarxunlai/ScientificFigureLibrary-personal";
+// The Gitee repository is a transport mirror only. Keep the GitHub
+// repository above as the canonical identity and publish this URL in the
+// generated Catalog so installed plugins work without a user-authored
+// mirrors.json file.
+export const DEFAULT_ARCHIVE_SOURCES = Object.freeze([
+  {
+    kind: "gitee-mirror",
+    urlTemplate: "https://gitee.com/livenever/ScientificFigureLibrary-personal/raw/{archiveCommit}/{archivePath}",
+    priority: 1,
+  },
+]);
 export const CATALOG_SCHEMA = "figure-library.module-catalog.v1";
 export const PREVIEW_SCHEMA = "figure-library.module-preview-manifest.v1";
 export const SOURCE_PACK_SCHEMA = "figure-library.module-source-pack.v1";
@@ -996,6 +1007,7 @@ export async function buildPersonalModuleCatalog(options = {}) {
       providerId: PROVIDER_ID,
       displayName: SOURCE_LABEL,
       repository,
+      archiveSources: DEFAULT_ARCHIVE_SOURCES,
     },
     modules: entries,
   };

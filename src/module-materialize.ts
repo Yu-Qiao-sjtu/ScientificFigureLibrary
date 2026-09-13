@@ -15,6 +15,13 @@ import {
   exactSelectorDigest,
   moduleArchiveExactSelector,
 } from "./providers.ts";
+import {
+  catalogArchiveSources,
+  githubArchiveSource,
+  readOpenModulesMirrorSources,
+  renderArchiveTransportUrl,
+  type ArchiveTransportSource,
+} from "./open-modules.ts";
 import type {
   ModuleArchiveExactSelector,
   ModuleCatalogEntry,
@@ -27,6 +34,22 @@ export type ModuleMaterializationMode = "template" | "full";
 export type ModuleArchiveSource = "source-pack" | "network" | "existing";
 export const MODULE_TEMPLATE_LOCK_SCHEMA =
   "figure-library.module-template-lock.v1" as const;
+
+export interface ModuleMaterializationResult {
+  target: string;
+  providerId: string;
+  exactSelector: ModuleArchiveExactSelector;
+  plannedSelector: ModuleArchiveExactSelector;
+  archiveSource: ModuleArchiveSource;
+  archiveLocation?: string;
+  transportSource?: "source-pack" | "gitee-mirror" | "github-upstream";
+  sha256: string;
+  cachePersisted?: boolean;
+  cachePersistenceError?: string;
+  files: string[];
+  fileInventory: StoredFile[];
+  replayed: boolean;
+};
 
 const MAX_ARCHIVE_BYTES = 100 * 1024 * 1024;
 const MAX_EXPANDED_BYTES = 128 * 1024 * 1024;
@@ -618,6 +641,10 @@ async function sourcePackInventory(root: string) {
     );
     for (const entry of entries) {
       const relative = prefix ? `${prefix}/${entry.name}` : entry.name;
+      // The extracted template cache is a derived, non-authoritative view of
+      // the archive. It lives beside the Source Pack manifest but is not part
+      // of the manifest's portable archive inventory.
+      if (!prefix && entry.name === "templates" && entry.isDirectory()) continue;
       assertModulePortablePath(relative, "Source Pack path");
       const absolute = path.join(directory, entry.name);
       const stat = await fs.lstat(absolute);
@@ -679,44 +706,98 @@ export async function readModuleSourcePackArchive(
     bytes,
     location: path.join(root, ...entry.file.split("/")),
     source: "source-pack" as const,
+    transportSource: "source-pack" as const,
     identity,
   };
 }
 
 export function moduleArchiveUrl(module: ModuleCatalogEntry) {
-  const [owner, repository] = module.archive.repository.split("/");
-  if (!owner || !repository) throw new Error("module archive repository is invalid");
-  const encodedPath = module.archive.path.split("/").map((part) => encodeURIComponent(part)).join("/");
-  return `https://raw.githubusercontent.com/${encodeURIComponent(owner)}/${encodeURIComponent(repository)}/${module.archive.commit}/${encodedPath}`;
+  return renderArchiveTransportUrl(githubArchiveSource(module), module);
 }
 
-async function download(url: string) {
+function allowedArchiveHost(source: ArchiveTransportSource) {
+  return source.kind === "gitee-mirror" ? "gitee.com" : "raw.githubusercontent.com";
+}
+
+function allowedArchiveResponseHosts(source: ArchiveTransportSource) {
+  return source.kind === "gitee-mirror"
+    ? new Set(["gitee.com", "raw.giteeusercontent.com"])
+    : new Set(["raw.githubusercontent.com"]);
+}
+
+async function download(source: ArchiveTransportSource, module: ModuleCatalogEntry) {
+  const url = renderArchiveTransportUrl(source, module);
+  const requestedUrl = new URL(url);
+  const redirectPolicy = source.kind === "gitee-mirror" ? "manual" : "error";
   let response: Response;
   try {
     response = await fetch(url, {
-      // raw.githubusercontent.com currently serves exact object bytes directly.
-      // Rejecting redirects prevents the pinned Catalog URL from becoming an
-      // authority hand-off to another host.
-      redirect: "error",
+      // GitHub must serve the fixed raw URL directly. Gitee's raw endpoint
+      // intentionally redirects once to its signed raw.giteeusercontent.com
+      // CDN URL; that redirect is handled below with an explicit host/path
+      // allow-list rather than delegated to fetch.
+      redirect: redirectPolicy,
       signal: AbortSignal.timeout(60_000),
       headers: { "user-agent": `Scientific-Figure-Library/${VERSION}` },
     });
   } catch (error) {
     throw new Error(`network request failed: ${error instanceof Error ? error.message : String(error)}`);
   }
-  const finalUrl = new URL(response.url || url);
-  const requestedUrl = new URL(url);
+
+  let finalUrl = new URL(response.url || url);
+  if (source.kind === "gitee-mirror" && [301, 302, 307, 308].includes(response.status)) {
+    const location = response.headers.get("location");
+    if (!location) throw new Error("Gitee mirror redirect is missing its Location header");
+    let redirectUrl: URL;
+    try {
+      redirectUrl = new URL(location, requestedUrl);
+    } catch {
+      throw new Error("Gitee mirror redirect location is not a valid URL");
+    }
+    if (
+      redirectUrl.protocol !== "https:" ||
+      redirectUrl.hostname.toLocaleLowerCase("en-US") !== "raw.giteeusercontent.com" ||
+      redirectUrl.username ||
+      redirectUrl.password ||
+      redirectUrl.hash ||
+      redirectUrl.pathname !== requestedUrl.pathname
+    ) {
+      throw new Error("Gitee mirror redirect left the fixed raw archive path");
+    }
+    if (response.body) await response.body.cancel().catch(() => undefined);
+    try {
+      response = await fetch(redirectUrl.href, {
+        redirect: "error",
+        signal: AbortSignal.timeout(60_000),
+        headers: { "user-agent": `Scientific-Figure-Library/${VERSION}` },
+      });
+    } catch (error) {
+      throw new Error(`network request failed after Gitee redirect: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    finalUrl = new URL(response.url || redirectUrl.href);
+    if (finalUrl.href !== redirectUrl.href) {
+      throw new Error("Gitee mirror response URL differs from its signed redirect URL");
+    }
+  }
+
+  const allowedHosts = allowedArchiveResponseHosts(source);
   if (
     finalUrl.protocol !== "https:" ||
-    finalUrl.hostname !== "raw.githubusercontent.com" ||
+    !allowedHosts.has(finalUrl.hostname.toLocaleLowerCase("en-US")) ||
     finalUrl.username ||
     finalUrl.password ||
     finalUrl.hash
   ) {
-    throw new Error("download response left the fixed GitHub raw origin");
+    throw new Error(`download response left the fixed ${source.kind} origin`);
   }
-  if (finalUrl.href !== requestedUrl.href) {
+  if (finalUrl.hostname.toLocaleLowerCase("en-US") === "raw.giteeusercontent.com" && finalUrl.pathname !== requestedUrl.pathname) {
+    throw new Error("Gitee mirror response path differs from the fixed archive path");
+  }
+  if (finalUrl.hostname.toLocaleLowerCase("en-US") === allowedArchiveHost(source) && finalUrl.href !== requestedUrl.href) {
     throw new Error("download response URL differs from the fixed archive URL");
+  }
+  if ([301, 302, 307, 308].includes(response.status)) {
+    throw new Error("download response contains an unsupported redirect");
   }
   if (!response.ok || !response.body) throw new Error(`download failed (${response.status} ${response.statusText})`);
   const contentLength = response.headers.get("content-length");
@@ -788,6 +869,19 @@ export async function inspectModuleSourcePack(
     );
     await assertSourcePackInventory(root, manifest);
   } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return {
+        configured: false,
+        directory: root,
+        manifestValid: false,
+        ready: false,
+        availableTemplates: [] as string[],
+        invalidTemplates: [] as string[],
+        missingCount: expectedCount,
+        availableBytes: 0,
+        archiveCommits: [...new Set(index.catalog.modules.map((module) => module.archive.commit))].sort(),
+      };
+    }
     return {
       configured: true,
       directory: root,
@@ -842,25 +936,47 @@ async function acquireArchive(options: {
     try {
       return await readModuleSourcePackArchive(options.index, options.sourcePackDir, options.module);
     } catch (error) {
-      throw new Error(
-        `personal module Source Pack rejected: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
+      const message = error instanceof Error ? error.message : String(error);
+      // A valid but partial global Source Pack is expected: it may not yet
+      // contain the requested module. Missing packs/entries may fall through
+      // to the configured network sources; corrupt manifests, mismatched
+      // archives, and unsafe inventories remain fail-closed.
+      if (/ENOENT|does not list|missing .*\.zip/iu.test(message)) {
+        failures.push(`source pack: ${message}`);
+      } else {
+        throw new Error(`personal module Source Pack rejected: ${message}`);
+      }
     }
   }
   if (options.allowNetwork) {
-    const url = moduleArchiveUrl(options.module);
-    try {
-      const bytes = await download(url);
-      const identity = verifyArchive(options.module, bytes);
-      return { bytes, location: url, source: "network" as const, identity };
-    } catch (error) {
-      failures.push(`${url}: ${error instanceof Error ? error.message : String(error)}`);
+    const configured = await readOpenModulesMirrorSources(options.sourcePackDir);
+    const catalog = catalogArchiveSources(options.index.catalog);
+    const seen = new Set<string>();
+    const sources = [...configured, ...catalog, githubArchiveSource(options.module)].filter((source) => {
+      const key = `${source.kind}\n${source.urlTemplate}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    for (const source of sources) {
+      const url = renderArchiveTransportUrl(source, options.module);
+      try {
+        const bytes = await download(source, options.module);
+        const identity = verifyArchive(options.module, bytes);
+        return {
+          bytes,
+          location: url,
+          source: "network" as const,
+          transportSource: source.kind,
+          identity,
+        };
+      } catch (error) {
+        failures.push(`${url}: ${error instanceof Error ? error.message : String(error)}`);
+      }
     }
   }
   throw new Error(
-    `personal module archive unavailable. ${failures.join(" | ") || "network access is disabled"}. Provide a validated module Source Pack or allow the fixed commit download.`,
+    `Open Figure Modules archive unavailable. ${failures.join(" | ") || "network access is disabled"}. Provide a validated open-modules Source Pack or allow the configured mirror/canonical fixed-commit download.`,
   );
 }
 
@@ -1011,6 +1127,160 @@ async function extractModuleArchive(
   return written.sort();
 }
 
+function sourcePackEntry(module: ModuleCatalogEntry): ModuleSourcePackManifest["entries"][number] {
+  return {
+    moduleId: module.moduleId,
+    sourceRepository: module.source.repository,
+    sourceCommit: module.source.commit,
+    archiveRepository: module.archive.repository,
+    archiveCommit: module.archive.commit,
+    file: module.archive.path,
+    bytes: module.archive.bytes,
+    sha256: module.archive.sha256,
+  };
+}
+
+async function atomicWriteFile(file: string, bytes: Uint8Array | string) {
+  const temporary = `${file}.tmp-${randomUUID()}`;
+  await fs.writeFile(temporary, bytes, { flag: "wx" });
+  try {
+    await fs.rename(temporary, file);
+  } catch (error) {
+    await fs.rm(temporary, { force: true }).catch(() => undefined);
+    throw error;
+  }
+}
+
+/**
+ * Persist a fully verified network archive into the global Open Modules
+ * Source Pack. This is intentionally best-effort for the current project:
+ * callers report cachePersisted=false while keeping the verified bytes in
+ * memory for the requested materialization.
+ */
+async function acquireSourcePackLock(lockDirectory: string) {
+  await fs.mkdir(path.dirname(lockDirectory), { recursive: true });
+  const started = Date.now();
+  while (true) {
+    try {
+      await fs.mkdir(lockDirectory);
+      return;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+      if (Date.now() - started > 30_000) {
+        throw new Error(`Open Modules Source Pack is busy: ${lockDirectory}`);
+      }
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+  }
+}
+
+async function persistOpenModulesCache(
+  root: string,
+  index: ModuleCatalogIndex,
+  module: ModuleCatalogEntry,
+  bytes: Uint8Array,
+) {
+  const lockDirectory = path.join(path.resolve(root, "..", ".."), "locks", "open-modules-source-pack");
+  await acquireSourcePackLock(lockDirectory);
+  try {
+    return await persistOpenModulesCacheUnlocked(root, index, module, bytes);
+  } finally {
+    await fs.rm(lockDirectory, { recursive: true, force: true }).catch(() => undefined);
+  }
+}
+
+async function persistOpenModulesCacheUnlocked(
+  root: string,
+  index: ModuleCatalogIndex,
+  module: ModuleCatalogEntry,
+  bytes: Uint8Array,
+) {
+  const directory = path.resolve(root);
+  await fs.mkdir(directory, { recursive: true });
+  const manifestPath = path.join(directory, "module-source-pack.manifest.json");
+  let manifest: ModuleSourcePackManifest;
+  try {
+    const raw = await fs.readFile(manifestPath, "utf8");
+    manifest = parseModuleSourcePackManifest(JSON.parse(raw) as unknown, index.catalog);
+    await assertSourcePackInventory(directory, manifest);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    const existing = await fs.readdir(directory).catch(() => []);
+    if (existing.length) {
+      throw new Error(`Open Modules Source Pack manifest is missing at ${manifestPath}`);
+    }
+    manifest = {
+      schema: "figure-library.module-source-pack.v1",
+      providerId: index.catalog.provider.providerId,
+      repository: index.catalog.provider.repository,
+      entries: [],
+    };
+  }
+
+  const entry = sourcePackEntry(module);
+  const existingEntry = manifest.entries.find((item) => item.moduleId === module.moduleId);
+  if (existingEntry && canonicalJson(existingEntry) !== canonicalJson(entry)) {
+    throw new Error(`Open Modules Source Pack entry for ${module.moduleId} differs from the Catalog`);
+  }
+
+  const archivePath = path.resolve(directory, ...entry.file.split("/"));
+  const relativeArchive = path.relative(directory, archivePath);
+  if (!relativeArchive || relativeArchive.startsWith("..") || path.isAbsolute(relativeArchive)) {
+    throw new Error(`unsafe Open Modules archive path: ${entry.file}`);
+  }
+  await fs.mkdir(path.dirname(archivePath), { recursive: true });
+  try {
+    const existing = new Uint8Array(await fs.readFile(archivePath));
+    verifyArchive(module, existing, entry);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    await atomicWriteFile(archivePath, bytes);
+  }
+
+  if (!existingEntry) {
+    const entries = [...manifest.entries, entry].sort((left, right) =>
+      compareCanonicalStrings(left.moduleId, right.moduleId),
+    );
+    manifest = { ...manifest, entries };
+    await atomicWriteFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+  }
+
+  const cacheRoot = path.join(directory, "templates", module.moduleId);
+  try {
+    const stat = await fs.lstat(cacheRoot);
+    if (stat.isSymbolicLink() || !stat.isDirectory()) {
+      throw new Error(`Open Modules template cache is not a regular directory: ${cacheRoot}`);
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    const staging = `${cacheRoot}.tmp-${randomUUID()}`;
+    await fs.mkdir(staging, { recursive: true });
+    try {
+      await extractModuleArchive(bytes, module, staging, "full");
+      await fs.writeFile(
+        path.join(staging, "cache.json"),
+        `${JSON.stringify({
+          schema: "figure-library.open-modules-cache.v1",
+          moduleId: module.moduleId,
+          sourceCommit: module.source.commit,
+          archiveCommit: module.archive.commit,
+          archiveSha256: module.archive.sha256,
+        }, null, 2)}\n`,
+        { flag: "wx" },
+      );
+      await fs.mkdir(path.dirname(cacheRoot), { recursive: true });
+      await fs.rename(staging, cacheRoot);
+    } catch (error) {
+      await fs.rm(staging, { recursive: true, force: true }).catch(() => undefined);
+      throw error;
+    }
+  }
+  return {
+    archivePath,
+    templateCachePath: cacheRoot,
+  };
+}
+
 async function createNormalizedAssets(root: string, upstreamFiles: string[]) {
   for (const bucket of ["visuals", "code", "references", "evidence"]) {
     await fs.mkdir(path.join(root, "assets", bucket), { recursive: true });
@@ -1091,7 +1361,8 @@ export async function materializeModuleTemplate(options: {
   planDigest?: string;
   sourcePackDir?: string;
   allowNetwork?: boolean;
-}) {
+  persistNetworkArchive?: boolean;
+}): Promise<ModuleMaterializationResult> {
   const { index, module, mode } = options;
   const providerId = options.providerId;
   if (providerId !== index.catalog.provider.providerId) {
@@ -1151,6 +1422,21 @@ export async function materializeModuleTemplate(options: {
       sourcePackDir: options.sourcePackDir,
       allowNetwork: options.allowNetwork ?? true,
     });
+    let cachePersisted = acquired.source === "source-pack";
+    let cachePersistenceError: string | undefined;
+    if (
+      acquired.source === "network" &&
+      options.persistNetworkArchive !== false &&
+      options.sourcePackDir
+    ) {
+      try {
+        await persistOpenModulesCache(options.sourcePackDir, index, module, acquired.bytes);
+        cachePersisted = true;
+      } catch (error) {
+        cachePersisted = false;
+        cachePersistenceError = error instanceof Error ? error.message : String(error);
+      }
+    }
     const upstreamFiles = await extractModuleArchive(acquired.bytes, module, staging, mode);
     const assets = await createNormalizedAssets(staging, upstreamFiles);
     const exactSelector = plannedSelector;
@@ -1251,7 +1537,10 @@ export async function materializeModuleTemplate(options: {
       plannedSelector,
       archiveSource: acquired.source,
       archiveLocation: acquired.location,
+      ...(acquired.transportSource ? { transportSource: acquired.transportSource } : {}),
       sha256: acquired.identity.sha256,
+      cachePersisted,
+      ...(cachePersistenceError ? { cachePersistenceError } : {}),
       files: fileInventory.map((file) => file.file),
       fileInventory,
       replayed: false,

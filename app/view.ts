@@ -177,6 +177,27 @@ function previewFailureLabel(status: Candidate["previewStatus"]) {
   return "无可用预览";
 }
 
+function cardStatus(candidate: Candidate) {
+  const previewStatus = candidate.searchPreviewStatus ?? candidate.previewStatus;
+  if ((previewStatus && previewStatus !== "ready") || candidate.previewAvailable === false) {
+    return { label: "预览不可用", tone: "warning" as const };
+  }
+  if (!candidate.materializable) return { label: "仅参考图", tone: "neutral" as const };
+  return undefined;
+}
+
+function cardContext(candidate: Candidate) {
+  const scientificQuestion = markdownPlainText(candidate.scientificQuestion ?? "");
+  if (scientificQuestion) return { label: "科学问题", text: scientificQuestion };
+  const application = markdownPlainText(candidate.application ?? "");
+  if (application) return { label: "应用场景", text: application };
+  const description = markdownPlainText(candidate.description || candidate.excerpt || "");
+  return {
+    label: "模板说明",
+    text: description || "查看模板详情以确认输入要求。",
+  };
+}
+
 function effectiveCandidateValidationState(
   candidate: Candidate,
 ): ValidationStateSummaryV1 {
@@ -392,7 +413,6 @@ export function renderCandidateCards(options: {
     headingNode.append(titleButton);
     heading.append(
       headingNode,
-      element(document, "code", "template-id", candidate.templateId),
       element(
         document,
         "span",
@@ -400,22 +420,38 @@ export function renderCandidateCards(options: {
         candidate.sourceLabel,
       ),
     );
-    top.append(heading, element(document, "span", "score", `召回 ${candidate.retrievalScore}`));
-    const description = markdownPlainText(candidate.description || candidate.application || candidate.excerpt || "查看模板详情以确认输入要求。");
+    const score = element(document, "span", "score", `匹配度 ${candidate.retrievalScore}`);
+    score.title = "仅表示检索相关性，不代表科学质量";
+    score.setAttribute(
+      "aria-label",
+      `匹配度 ${candidate.retrievalScore}；仅表示检索相关性，不代表科学质量`,
+    );
+    top.append(heading, score);
     if (candidate.matchKind) {
       top.append(element(document, "span", "chip", candidate.matchKind === "identity" ? "身份字段匹配（待确认）" : "相似候选（待确认）"));
     }
+    const context = cardContext(candidate);
+    const contextNode = element(document, "p", "card-context");
+    contextNode.append(
+      element(document, "span", "card-context-label", context.label),
+      element(document, "span", "card-context-text", context.text),
+    );
     content.append(
       top,
-      element(document, "p", "description", description),
-      element(document, "p", "provider-state", providerStateLines(candidate).join(" · ")),
-      element(document, "p", "validation-summary", validationSummaryLines(candidate).join(" · ")),
+      contextNode,
     );
 
     const tags = [candidate.assetKind, candidate.language, candidate.plotFamily].filter(Boolean);
     if (tags.length) content.append(chips(document, tags, 6));
 
-    if (candidate.matchKind) content.append(element(document, "p", "description", "检索分不是重复证明，请对照预览人工确认。"));
+    const status = cardStatus(candidate);
+    if (status) {
+      const statusNode = element(document, "span", `card-status card-status-${status.tone}`, status.label);
+      statusNode.setAttribute("aria-label", status.label);
+      content.append(statusNode);
+    }
+
+    if (candidate.matchKind) content.append(element(document, "p", "match-note", "检索分不是重复证明，请对照预览人工确认。"));
     const detailButton = button(document, "candidate-action", "查看详情", "details");
     const applySelected = (selected: boolean) => {
       selectBox.checked = selected;

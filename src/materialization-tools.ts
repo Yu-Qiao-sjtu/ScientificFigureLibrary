@@ -22,6 +22,7 @@ import type { ExactTemplateSelector } from "./types.ts";
 import {
   createDefaultProviderRegistry,
   createProviderContext,
+  defaultProviderSourcePackDirectory,
   type ProviderRegistry,
 } from "./provider-registry.ts";
 import {
@@ -90,6 +91,9 @@ interface MaterializationResult {
   files: string[];
   materializationSource: string;
   archiveSha256?: string;
+  transportSource?: string;
+  cachePersisted?: boolean;
+  cachePersistenceError?: string;
   replayed: boolean;
   recovered?: boolean;
 }
@@ -1355,6 +1359,10 @@ export function registerMaterializationTools(options: {
         const destination = path.resolve(input.destination);
         const target = path.join(destination, templateId);
         if (!(await targetMissing(target))) throw new Error(`target already exists: ${target}`);
+        const effectiveSourcePackDir =
+          input.sourcePackDir
+            ? path.resolve(input.sourcePackDir)
+            : defaultProviderSourcePackDirectory(input.providerId, context.snapshot.root);
         const withoutDigest = {
           schema: "figure-library.materialization-plan.v2" as const,
           providerId: input.providerId,
@@ -1362,7 +1370,7 @@ export function registerMaterializationTools(options: {
           libraryContext,
           destination,
           target,
-          ...(input.sourcePackDir ? { sourcePackDir: path.resolve(input.sourcePackDir) } : {}),
+          ...(effectiveSourcePackDir ? { sourcePackDir: effectiveSourcePackDir } : {}),
           allowNetwork: input.allowNetwork,
           previewConfirmation: {
             protocolVersion: 2 as const,
@@ -1550,6 +1558,9 @@ export function registerMaterializationTools(options: {
           files: applied.files,
           materializationSource: applied.materializationSource,
           ...(applied.archiveSha256 ? { archiveSha256: applied.archiveSha256 } : {}),
+          ...(applied.transportSource ? { transportSource: applied.transportSource } : {}),
+          ...(applied.cachePersisted !== undefined ? { cachePersisted: applied.cachePersisted } : {}),
+          ...(applied.cachePersistenceError ? { cachePersistenceError: applied.cachePersistenceError } : {}),
           replayed: false,
         };
         await faultInjector?.("before_public_receipt", {

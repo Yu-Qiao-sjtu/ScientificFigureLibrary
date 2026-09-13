@@ -21,7 +21,7 @@ presented as shipped ones:
 
 1. [Scope and boundaries](#1-scope-and-boundaries)
 2. [Install and first-run setup](#2-install-and-first-run-setup)
-3. [Browse, search, and confirm templates](#3-browse-search-and-confirm-templates)
+3. [Browse, search, and submit plotting tasks](#3-browse-search-and-submit-plotting-tasks)
 4. [Figure index (by purpose)](#4-figure-index-by-purpose)
 5. [Prepare your own figure and data](#5-prepare-your-own-figure-and-data)
 6. [Fonts, colors, sizes, and export](#6-fonts-colors-sizes-and-export)
@@ -143,11 +143,14 @@ an admin override only; daily use does not need it.
 
 ---
 
-## 3. Browse, search, and confirm templates
+## 3. Browse, search, and submit plotting tasks
 
-The core discipline is **view the real preview, explicitly confirm that card,
-then materialize**. Materialization copies the confirmed template into the
-project; it does not execute code.
+The core discipline is **select the template(s), submit the plotting task,
+then inspect the exact preview and confirm before materialization**.
+Materialization copies the confirmed template into the project; it does not
+execute code. A plotting task may be submitted before every exact preview has
+been viewed; the Host/Agent completes the required preview/receipt sequence
+before creating a materialization plan.
 
 Click a title or empty card area to select or deselect; use the selected marker and count as feedback. Thumbnails and **查看详情** open details. Basic detail browsing emits no diagnostic tool calls. Neither a selection checkbox nor a host tool approval is an exact-preview confirmation or permission to materialize or execute code.
 
@@ -156,11 +159,12 @@ Click a title or empty card area to select or deselect; use the selected marker 
 | 1. Describe the goal and search | You → host model | State the research question, available data, and preferred source; the model shows actual candidates |
 | 2. Browse candidates | You | Inspect thumbnails, use cases, input requirements, and sources; retrieval scores are not confidence or scientific validation |
 | 3. Choose a template | You | The model stops after search unless you explicitly delegate the choice |
-| 4. View the exact preview | Host model / App → you | View the actual selected version; hosts without an App use the headless preview flow |
-| 5. Explicitly confirm | You | Only confirmation after the exact preview produces a session-local, single-use preview receipt |
-| 6. Check the materialization plan | Host model → you | Check the template, file set (template/full), network needs, and absolute destination before confirming |
-| 7. Apply materialization | Host model calls SFL | Preserve the receipt and exact identity; output is `<destination>/<templateId>` and existing directories are not overwritten |
-| 8. Inspect the files | You + host model | Review the inventory and `template.lock.json`, then adapt your data; no plotting code has run |
+| 4. Submit the plotting task | You → Host App | One or more selected templates become one `taskItems[]` handoff; the Host must process every selected item |
+| 5. View the exact preview | Host model / App → you | View the actual selected version when required; hosts without an App use the headless preview flow |
+| 6. Explicitly confirm | You or Host workflow | Only confirmation after the exact preview produces a session-local, single-use preview receipt |
+| 7. Check the materialization plan | Host model → you | Check the template, file set (template/full), network needs, Source Pack/mirror policy, and absolute destination before confirming |
+| 8. Apply materialization | Host model calls SFL | Preserve the receipt and exact identity; output is `<destination>/<templateId>` and existing directories are not overwritten |
+| 9. Inspect the files | You + host model | Review the inventory and `template.lock.json`, then adapt your data; no plotting code has run |
 
 See [section 9.5](#95-tool-reference) for tool names; users do not need to memorize them.
 
@@ -217,7 +221,7 @@ network; the official catalog can refresh in the background. If the local
 catalog is old, inspect its origin, refresh status, and errors before blaming
 the installation.
 
-Continue with [section 3](#3-browse-search-and-confirm-templates), then adapt
+Continue with [section 3](#3-browse-search-and-submit-plotting-tasks), then adapt
 your data using [section 5](#5-prepare-your-own-figure-and-data).
 
 ---
@@ -477,6 +481,12 @@ ScientificFigureLibrary/
 ├── skills/                        # The four bundled Skills
 └── src/                           # MCP server implementation
 ```
+
+The bound runtime Library keeps Local Published content under `store/`. The
+complete Open Figure Modules Source Pack is a separate sibling at
+`source-packs/open-modules/`, with `archives/` and an extracted template cache.
+It is populated only after a verified materialization download; Local Published
+never uses this Source Pack.
 
 ### 9.2 Bundled Skills
 

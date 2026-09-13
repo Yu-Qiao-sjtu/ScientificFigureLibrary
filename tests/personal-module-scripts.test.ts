@@ -103,6 +103,11 @@ test("maintainer scripts validate, archive, pin commits, build the bundled snaps
   assert.equal(built.catalog.modules.length, 1);
   assert.equal(built.catalog.modules[0].source.commit, fixture.sourceCommit);
   assert.equal(built.catalog.modules[0].archive.commit, archiveCommit);
+  assert.deepEqual(built.catalog.provider.archiveSources, [{
+    kind: "gitee-mirror",
+    priority: 1,
+    urlTemplate: "https://gitee.com/livenever/ScientificFigureLibrary-personal/raw/{archiveCommit}/{archivePath}",
+  }]);
   assert.equal(built.comparison.equal, true);
 
   const index = await ModuleCatalogIndex.load(snapshot, {
