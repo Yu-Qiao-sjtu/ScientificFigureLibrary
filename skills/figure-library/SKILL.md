@@ -452,6 +452,14 @@ anything during preview.
   candidate. Both headless routes cannot prove that the user actually saw an
   App image; say so in any acceptance report.
 
+An explicit request such as “use this selected template to complete the plot”
+is explicit delegation for that one exact candidate. On a headless route, call
+`figure_library_preview_exact_headless` once and then
+`figure_library_confirm_selection_headless` immediately; do not substitute the
+compatibility `figure_library_preview` tool and do not stop after displaying a
+preview. Continue to the normal Plan/Apply gate, where the archive acquisition
+and global Source Pack persistence occur.
+
 If App `updateModelContext` reports
 `schema=figure-library.app-plot-task-handoff.v2` and
 `handoffMode=agent_plot_task`, the user submitted one plotting task containing
@@ -490,7 +498,11 @@ Materialize only after the preview/confirmation sequence above.
    Library root's `source-packs/open-modules` directory; FigureYa uses the
    sibling `source-packs/figureya` directory. For Open Figure Modules these
    directories contain `module-source-pack.manifest.json`; for FigureYa they
-   contain its Source Pack manifest. A supplied corrupt or mismatched Source
+   contain its Source Pack manifest. A verified network archive is persisted to
+   the corresponding global Source Pack (ZIP retained, extracted `templates/`
+   cache created) during Apply; a cache-write failure is reported as
+   `cachePersisted=false` while the verified current project may still finish.
+   A supplied corrupt or mismatched Source
    Pack fails closed; an otherwise valid partial pack may continue to the
    configured archive sources when networking is allowed.
    Missing receipt is `preview_required`; do not retry without preview.

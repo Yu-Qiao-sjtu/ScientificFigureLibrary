@@ -938,11 +938,18 @@ FigureYaSourcePack/
 ```
 
 Pass an absolute directory as `sourcePackDir` or set
-`FIGUREYA_SOURCE_PACK_DIR`. Archive resolution is:
+`FIGUREYA_SOURCE_PACK_DIR`; when omitted, the bound global Library automatically
+uses `source-packs/figureya/`. Archive resolution is:
 
 1. local Source Pack;
 2. bases configured in `FIGUREYA_ARCHIVE_BASE_URLS`;
 3. the commit-pinned FigureYa-compressed archive on GitHub.
+
+When a network archive is verified during Materialize Apply, SFL writes it back
+to the global FigureYa Source Pack, keeps the ZIP, updates
+`figureya-source-pack.manifest.json`, and creates an extracted `templates/`
+cache. A cache-write failure is reported as `cachePersisted=false` while the
+already verified current project may still complete.
 
 Create a small transport pack from a local checkout:
 

@@ -69,6 +69,10 @@ ZIP 和解压后的模板缓存。GitHub 仓库与固定 commit 仍是 canonical
 镜像已随插件内置为默认国内下载加速来源，失败时回退 GitHub；用户仍可通过本地
 override 覆盖传输顺序，但不能改变 canonical 身份。Local Published 仍直接读取全局
 Library 的 `store/`，不会使用这个 Source Pack，也不会因为 Gitee 镜像而改变。
+FigureYa 也遵循同样的写穿缓存规则，保存在并列的
+`source-packs/figureya/`：固定 archive 校验成功后保留 ZIP，更新
+`figureya-source-pack.manifest.json`，并写入派生的 `templates/` 缓存。搜索和预览仍然只读，
+只有获批的 Materialize Apply 才会执行这个持久化动作。
 维护命令是离线的，并且不会创建仓库、commit、push、运行 R、安装依赖或修改
 Gallery：
 

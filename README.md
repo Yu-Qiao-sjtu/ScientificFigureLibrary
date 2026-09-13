@@ -173,6 +173,12 @@ archive when unavailable. An optional machine-local mirror override can take
 precedence without changing canonical identity. Local Published templates continue
 to be read directly from the Library `store/` and never use this Source Pack.
 
+FigureYa follows the same write-through rule in the sibling
+`source-packs/figureya/` directory: a verified network archive is retained as a
+ZIP, indexed by `figureya-source-pack.manifest.json`, and extracted into the
+derived `templates/` cache. Preview and search remain read-only; this happens
+only during the approved Materialize Apply operation.
+
 The signed feed lives on the `open-figure-feed` branch of
 `jarxunlai/ScientificFigureLibrary-personal`. SFL checks
 `current/source-manifest.json` over HTTPS, verifies the Ed25519 detached

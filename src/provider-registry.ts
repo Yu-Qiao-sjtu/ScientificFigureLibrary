@@ -707,6 +707,7 @@ export class FigureYaProviderAdapter implements ProviderAdapter {
       exactSelector: resolved.exactSelector,
       sourcePackDir: operation.sourcePackDir ?? context.sourcePackDir,
       allowNetwork,
+      persistNetworkArchive: true,
       operationId: operation.operationId,
       planDigest: operation.planDigest,
     });
@@ -717,6 +718,8 @@ export class FigureYaProviderAdapter implements ProviderAdapter {
       files: applied.files,
       materializationSource: applied.archiveSource,
       archiveSha256: applied.sha256,
+      ...(applied.cachePersisted !== undefined ? { cachePersisted: applied.cachePersisted } : {}),
+      ...(applied.cachePersistenceError ? { cachePersistenceError: applied.cachePersistenceError } : {}),
     };
   }
 

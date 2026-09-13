@@ -487,6 +487,48 @@ test("FigureYa materialization prefers and verifies a Source Pack", async () => 
     assert.equal(unmanifested.manifestValid, false);
     assert.equal(unmanifested.ready, false);
     assert.equal(unmanifested.availableTemplates.length, 0);
+
+    const networkPack = path.join(root, "network-pack");
+    const previousFetch = globalThis.fetch;
+    let networkUrl = "";
+    globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+      networkUrl = String(input);
+      assert.equal(init?.redirect, "follow");
+      return new Response(archive, {
+        status: 200,
+        headers: { "content-length": String(archive.byteLength) },
+      });
+    }) as typeof fetch;
+    try {
+      const networkResult = await materializeFigureYaTemplate({
+        catalog,
+        module,
+        destination: path.join(root, "network-output"),
+        mode: "template",
+        sourcePackDir: networkPack,
+        allowNetwork: true,
+        persistNetworkArchive: true,
+      });
+      assert.equal(networkResult.archiveSource, "network");
+      assert.equal(networkResult.cachePersisted, true);
+      assert.match(networkUrl, /FigureYa-compressed\/archive-commit\/FigureYaSourcePackTest\.zip$/u);
+      assert.equal(
+        await fs.readFile(path.join(networkPack, "archives", `${moduleId}.zip`)).then((bytes) => sha256(bytes)),
+        archiveSha256,
+      );
+      const persistedManifest = JSON.parse(
+        await fs.readFile(path.join(networkPack, "figureya-source-pack.manifest.json"), "utf8"),
+      );
+      assert.equal(persistedManifest.schema, "figure-library.source-pack.v2");
+      assert.equal(persistedManifest.archives[0].sha256, archiveSha256);
+      assert.equal(
+        await fs.stat(path.join(networkPack, "templates", moduleId, "upstream", `${moduleId}.Rmd`)).then(() => true),
+        true,
+      );
+    } finally {
+      globalThis.fetch = previousFetch;
+    }
+
     await fs.writeFile(
       path.join(pack, "figureya-source-pack.manifest.json"),
       `${JSON.stringify({
