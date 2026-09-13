@@ -62,6 +62,13 @@ figure-organization、figure-style，不要求宿主另外安装同名 Skills。
 ```
 
 SFL 插件仍内置 `assets/personal-modules/` 作为离线 bootstrap Catalog、预览/缩略图和许可说明。安装带更新器的版本后，SFL 会在 MCP 进程运行时异步检查个人仓 `open-figure-feed` 上的 signed feed；验证成功后原子切换本地 overlay。普通模板新增/更新/撤下不再需要重新打包插件。插件不包含完整 ZIP、Gallery 源图、私有数据、凭证或签名私钥。搜索不等待网络；`figure_library_list_provider_sources` 保持离线。官方 channel 只允许 `configure autoRefresh` 和显式 `update`，不允许 add/remove/trust_reset。
+
+运行时的完整 Open Figure Modules 不放进插件，而是保存在已经绑定的全局 Library 下：
+`source-packs/open-modules/`。固定版本 archive 完整校验成功后会自动持久化，并保留
+ZIP 和解压后的模板缓存。GitHub 仓库与固定 commit 仍是 canonical 身份；Gitee
+镜像已随插件内置为默认国内下载加速来源，失败时回退 GitHub；用户仍可通过本地
+override 覆盖传输顺序，但不能改变 canonical 身份。Local Published 仍直接读取全局
+Library 的 `store/`，不会使用这个 Source Pack，也不会因为 Gitee 镜像而改变。
 维护命令是离线的，并且不会创建仓库、commit、push、运行 R、安装依赖或修改
 Gallery：
 

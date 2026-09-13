@@ -269,7 +269,7 @@ function candidateText(candidates: TemplateCandidate[]) {
         ? [`   WARNINGS: ${candidate.warnings.join("; ")}`]
         : []),
     ]),
-    publicationReview ? "NEXT_STEP: wait for the user to confirm whether these publication candidates are duplicates. No Apply before confirmation." : "NEXT_STEP: wait for App updateModelContext. If it reports handoffMode=agent_plot_set, plot every selected candidate in the current project. If it reports handoffMode=headless_exact_review, review only that one candidate. Otherwise do not call an exact-preview tool unless the user explicitly delegates headless visual review.",
+    publicationReview ? "NEXT_STEP: wait for the user to confirm whether these publication candidates are duplicates. No Apply before confirmation." : "NEXT_STEP: wait for App updateModelContext. If it reports schema=figure-library.app-plot-task-handoff.v2 and handoffMode=agent_plot_task, process every taskItems entry in the current project. If it reports the legacy handoffMode=agent_plot_set, normalize its selectedCandidates conservatively during the compatibility window. If it reports handoffMode=headless_exact_review, review only that one candidate. Otherwise do not call an exact-preview tool unless the user explicitly delegates headless visual review.",
   ].join("\n");
 }
 
@@ -1062,6 +1062,9 @@ export async function createServer(options: {
     updateModelContextFallback: true,
     fallbackHandoffMode: "headless_exact_review",
     fallbackCandidateLimit: 1,
+    plotTaskHandoffSchema: "figure-library.app-plot-task-handoff.v2",
+    plotTaskItemsField: "taskItems",
+    openModulesSourcePackDirectory: "source-packs/open-modules",
     modelVisibleSearchIncludesImageData: false,
     componentThumbnailMetaKey: "candidatePreviews",
   } as const;

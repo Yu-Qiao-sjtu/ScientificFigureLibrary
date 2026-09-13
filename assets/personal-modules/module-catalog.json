@@ -5392,6 +5392,13 @@
     }
   ],
   "provider": {
+    "archiveSources": [
+      {
+        "kind": "gitee-mirror",
+        "priority": 1,
+        "urlTemplate": "https://gitee.com/livenever/ScientificFigureLibrary-personal/raw/{archiveCommit}/{archivePath}"
+      }
+    ],
     "displayName": "Open Figure Modules",
     "providerId": "io.github.jarxunlai.personal-figures",
     "repository": "jarxunlai/ScientificFigureLibrary-personal"

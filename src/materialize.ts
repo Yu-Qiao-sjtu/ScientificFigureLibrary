@@ -403,6 +403,19 @@ export async function inspectFigureYaSourcePack(
   try {
     pack = await loadSourcePack(directory, catalog);
   } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return {
+        configured: false,
+        directory: path.resolve(directory),
+        manifestValid: false,
+        ready: false,
+        availableTemplates: [] as string[],
+        invalidTemplates: [] as string[],
+        missingCount: expectedCount,
+        availableBytes: 0,
+        archiveCommit: catalog.compressed.commit,
+      };
+    }
     return {
       configured: true,
       directory: path.resolve(directory),

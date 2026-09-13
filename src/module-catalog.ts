@@ -17,6 +17,7 @@ import type {
   ModulePreviewManifest,
   ModuleSourcePackManifest,
 } from "./types.ts";
+import { parseArchiveTransportSources } from "./open-modules.ts";
 
 export const MODULE_CATALOG_SCHEMA = "figure-library.module-catalog.v1" as const;
 export const MODULE_PREVIEW_MANIFEST_SCHEMA =
@@ -452,7 +453,12 @@ export function parseModuleCatalog(
   exactKeys(value, ["schema", "generatedAt", "provider", "modules"], [], "catalog");
   if (value.schema !== MODULE_CATALOG_SCHEMA) throw new Error("unsupported module Catalog schema");
   if (!isRecord(value.provider)) throw new Error("catalog.provider must be an object");
-  exactKeys(value.provider, ["providerId", "displayName", "repository"], [], "catalog.provider");
+  exactKeys(
+    value.provider,
+    ["providerId", "displayName", "repository"],
+    ["archiveSources"],
+    "catalog.provider",
+  );
   assertPortableMetadata(value.provider, "catalog.provider");
   assertProviderId(value.provider.providerId);
   if (
@@ -467,6 +473,9 @@ export function parseModuleCatalog(
     providerId: value.provider.providerId,
     displayName: text(value.provider.displayName, "catalog.provider.displayName", 200),
     repository: repository(value.provider.repository, "catalog.provider.repository"),
+    ...(value.provider.archiveSources !== undefined
+      ? { archiveSources: parseArchiveTransportSources(value.provider.archiveSources, "catalog.provider.archiveSources") }
+      : {}),
   };
   if (
     options.expectedRepository !== undefined &&

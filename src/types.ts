@@ -160,6 +160,12 @@ export interface ModuleCatalogEntry {
   provenance?: Record<string, unknown>[];
 }
 
+export interface ModuleArchiveSource {
+  kind: "gitee-mirror" | "github-upstream";
+  urlTemplate: string;
+  priority?: number;
+}
+
 export interface ModuleCatalog {
   schema: "figure-library.module-catalog.v1";
   generatedAt: string;
@@ -167,6 +173,7 @@ export interface ModuleCatalog {
     providerId: string;
     displayName: string;
     repository: string;
+    archiveSources?: ModuleArchiveSource[];
   };
   modules: ModuleCatalogEntry[];
 }

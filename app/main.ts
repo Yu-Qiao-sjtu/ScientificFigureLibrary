@@ -6,6 +6,7 @@ import {
 } from "@modelcontextprotocol/ext-apps";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import {
+  buildPlotTaskHandoff,
   updateModelContextForHeadlessReview,
   updateModelContextForPlotSet,
 } from "./handoff.ts";
@@ -377,19 +378,15 @@ async function publishSelection(
   confirmationMode: string,
   previewSha256: string,
 ) {
-  const markdown = `---
-source: Scientific Figure Library MCP App
-selectedTemplate: ${candidate.templateId}
-templateProvider: ${candidate.providerId}
-exactSelector: ${JSON.stringify(candidate.exactSelector)}
-materializationSelectors: ${JSON.stringify(candidate.materializationSelectors ?? null)}
-materializationModes: ${JSON.stringify(candidate.materializationModes ?? null)}
-previewSha256: ${previewSha256}
-previewReceipt: ${previewReceipt}
-previewConfirmationMode: ${confirmationMode}
----
-
-The user selected and confirmed **${candidate.title}**. Use the unchanged providerId, exactSelector, preview hash, and single-use previewReceipt for figure_library_plan_materialize.`;
+  const markdown = buildPlotTaskHandoff({
+    resultSetId: activeResultSetId ?? "unknown",
+    candidates: [candidate],
+    preview: {
+      previewReceipt,
+      confirmationMode,
+      previewSha256,
+    },
+  });
   if (app.getHostCapabilities()?.updateModelContext?.text) {
     await app.updateModelContext({ content: [{ type: "text", text: markdown }] });
     await recordUiEvent("model_context.updated", candidate, {

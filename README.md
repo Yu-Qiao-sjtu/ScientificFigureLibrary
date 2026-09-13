@@ -162,6 +162,17 @@ refresh, search uses the remote last-known-good overlay instead of that
 bootstrap. The plugin never contains complete personal ZIPs, Gallery
 source/reference images, private data, credentials, or signing keys.
 
+At runtime, complete Open Figure Modules are kept outside the plugin in the
+bound global Library under `source-packs/open-modules/`. A verified archive
+download is persisted there together with an extracted template cache. The
+canonical archive identity remains the GitHub repository and pinned commit;
+the bundled Catalog includes the official Gitee mirror
+`https://gitee.com/livenever/ScientificFigureLibrary-personal/raw/{archiveCommit}/{archivePath}`
+as the default transport accelerator and falls back to the canonical GitHub
+archive when unavailable. An optional machine-local mirror override can take
+precedence without changing canonical identity. Local Published templates continue
+to be read directly from the Library `store/` and never use this Source Pack.
+
 The signed feed lives on the `open-figure-feed` branch of
 `jarxunlai/ScientificFigureLibrary-personal`. SFL checks
 `current/source-manifest.json` over HTTPS, verifies the Ed25519 detached

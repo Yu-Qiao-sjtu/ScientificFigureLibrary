@@ -175,6 +175,8 @@ export function assertPackagedGuidance({ packagedReadme, packagedProtocol, packa
     !packagedSkill.includes("Open Figure Modules") ||
     !packagedSkill.includes("includeInDefaultSearch") ||
     !packagedSkill.includes("module-archive.v1") ||
+    !packagedSkill.includes("source-packs/open-modules") ||
+    !packagedSkill.includes("figure-library.app-plot-task-handoff.v2") ||
     !packagedSkill.includes("figure_library_plan_provider_source_change") ||
     !packagedSkill.includes("figure_library_plan_publication_export") ||
     !packagedSkill.includes("figure_library_plan_publication_pr") ||
@@ -189,6 +191,7 @@ export function assertPackagedGuidance({ packagedReadme, packagedProtocol, packa
   }
   for (const marker of [
     "figure_library_search_page",
+    "figure-library.app-plot-task-handoff.v2",
     "figure_library_preview_exact_headless",
     "figure_library_preview_working_revision",
     "updateModelContextFallback",

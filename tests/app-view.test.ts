@@ -5,6 +5,7 @@ import test from "node:test";
 import { createTestWindow } from "./helpers/dom.ts";
 import {
   buildHeadlessReviewHandoff,
+  buildPlotTaskHandoff,
   buildPlotSetHandoff,
   updateModelContextForHeadlessReview,
 } from "../app/handoff.ts";
@@ -732,18 +733,41 @@ test("plot-set handoff includes every selected template and requires plotting al
     candidates: [first, second],
   });
   const selection = JSON.parse(text.split("\n")[3]!) as Record<string, unknown>;
-  const selected = selection.selectedCandidates as Array<Record<string, unknown>>;
+  const selected = selection.taskItems as Array<Record<string, unknown>>;
   const authorization = selection.authorization as Record<string, unknown>;
-  assert.equal(selection.handoffMode, "agent_plot_set");
+  assert.equal(selection.schema, "figure-library.app-plot-task-handoff.v2");
+  assert.equal(selection.handoffMode, "agent_plot_task");
   assert.equal(selected.length, 2);
   assert.equal(selected[0]?.templateId, "gsea-scatter");
   assert.equal(selected[0]?.scientificQuestion, "哪些通路被激活或抑制？");
   assert.equal(selected[1]?.templateId, "enrichment-bar");
-  assert.equal(authorization.mustPlotAllSelected, true);
-  assert.equal(authorization.exactReviewCandidateLimit, 2);
-  assert.match(text, /Plot every selected template/u);
+  assert.equal(authorization.mustProcessAllSelected, true);
+  assert.match(text, /Process every taskItems entry/u);
   assert.doesNotMatch(text, /Review only this one selected candidate/u);
   assert.doesNotMatch(JSON.stringify(selection), /data:image|previewDataUrl/u);
+});
+
+test("confirmed single plot task uses the same v2 task shape and preserves its receipt", () => {
+  const selected = candidate("org.scientificfigurelibrary.local", "confirmed-template", "ready");
+  const text = buildPlotTaskHandoff({
+    resultSetId: "confirmed-result",
+    candidates: [selected],
+    preview: {
+      previewReceipt: "receipt-one",
+      confirmationMode: "app",
+      previewSha256: "a".repeat(64),
+    },
+  });
+  const selection = JSON.parse(text.split("\n")[3]!) as Record<string, unknown>;
+  const items = selection.taskItems as Array<Record<string, unknown>>;
+  const preview = items[0]?.previewState as Record<string, unknown>;
+  assert.equal(selection.schema, "figure-library.app-plot-task-handoff.v2");
+  assert.equal(items.length, 1);
+  assert.equal(items[0]?.templateId, "confirmed-template");
+  assert.equal(preview.previewReceipt, "receipt-one");
+  assert.equal(preview.appPreviewViewed, true);
+  assert.equal((items[0]?.materialState as Record<string, unknown>).status, "unknown");
+  assert.equal((items[0]?.executionState as Record<string, unknown>).status, "not_started");
 });
 
 test("all Providers render the same Markdown detail while technical metadata stays collapsed", () => {
