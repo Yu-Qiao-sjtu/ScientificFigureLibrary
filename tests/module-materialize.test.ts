@@ -131,9 +131,10 @@ async function writePack(root: string, fixture: ReturnType<typeof fixtureCatalog
 }
 
 test("Open Modules Source Pack defaults to the global Library sibling", () => {
+  const globalRoot = "E:\\ScientificFigureLibrary";
   assert.equal(
-    defaultOpenModulesSourcePackDir("E:\\ScientificFigureLibrary"),
-    path.join("E:\\ScientificFigureLibrary", "source-packs", "open-modules"),
+    defaultOpenModulesSourcePackDir(globalRoot),
+    path.resolve(globalRoot, "source-packs", "open-modules"),
   );
 });
 
