@@ -21,6 +21,7 @@ import {
 } from "../app/view.ts";
 import { VERSION } from "../src/version.ts";
 import { createIcon, setButtonContent } from "../app/icons.ts";
+import { mountPlottingTips } from "../app/plotting-tips.ts";
 
 function candidate(
   providerId: string,
@@ -144,7 +145,32 @@ test("App shell includes the shared brand, responsive UI, dark mode, and reduced
   assert.match(styles, /prefers-reduced-motion/u);
   assert.match(styles, /html\[data-theme="dark"\]/u);
   assert.match(styles, /@media \(max-width: 420px\)/u);
+  assert.match(styles, /\.card-context-text\s*\{[\s\S]*?-webkit-line-clamp:\s*4;/u);
   assert.doesNotMatch(`${html}\n${source}\n${styles}`, /unpkg|jsdelivr|cdnjs/u);
+});
+
+test("plotting tips start collapsed and preserve an explicit open preference", () => {
+  const window = createTestWindow();
+  const document = window.document as unknown as Document;
+  const parent = document.createElement("section");
+  const storage = new Map<string, string>();
+  const store: Storage = {
+    get length() { return storage.size; },
+    clear() { storage.clear(); },
+    getItem(key) { return storage.get(key) ?? null; },
+    key(index) { return Array.from(storage.keys())[index] ?? null; },
+    removeItem(key) { storage.delete(key); },
+    setItem(key, value) { storage.set(key, value); },
+  };
+
+  const first = mountPlottingTips(document, parent, { storage: store, copy: async () => {} });
+  assert.equal(first.open, false);
+  first.open = true;
+  first.dispatchEvent(new window.Event("toggle"));
+
+  const reopened = mountPlottingTips(document, parent, { storage: store, copy: async () => {} });
+  assert.equal(reopened.open, true);
+  window.close();
 });
 
 test("search result hydrates App thumbnails from component-only metadata", () => {
@@ -209,10 +235,12 @@ test("personal module cards keep publisher state, Local state, and thumbnail sta
     onDetail() {},
   });
   assert.match(cards.textContent ?? "", /Open Figure Modules/u);
-  assert.match(cards.textContent ?? "", /发布者审核状态：approved/u);
-  assert.match(cards.textContent ?? "", /发布者执行状态：passed（synthetic_data）/u);
-  assert.match(cards.textContent ?? "", /SFL Local review：not_reviewed/u);
-  assert.match(cards.textContent ?? "", /SFL code execution：false/u);
+  assert.match(cards.textContent ?? "", /匹配度 100/u);
+  assert.equal(cards.querySelector(".template-id"), null);
+  assert.equal(cards.querySelector(".provider-state"), null);
+  assert.equal(cards.querySelector(".validation-summary"), null);
+  assert.doesNotMatch(cards.textContent ?? "", /发布者审核状态：approved/u);
+  assert.doesNotMatch(cards.textContent ?? "", /SFL Local review：not_reviewed/u);
 
   const opener = document.createElement("button");
   document.body.append(opener);
@@ -228,6 +256,10 @@ test("personal module cards keep publisher state, Local state, and thumbnail sta
   assert.match(detail.dialog.textContent ?? "", /源码 commit：aaaaaaaa/u);
   assert.match(detail.dialog.textContent ?? "", /归档 commit：bbbbbbbb/u);
   assert.match(detail.dialog.textContent ?? "", /ZIP SHA-256：cccccccc/u);
+  assert.match(detail.dialog.textContent ?? "", /发布者审核状态：approved/u);
+  assert.match(detail.dialog.textContent ?? "", /发布者执行状态：passed（synthetic_data）/u);
+  assert.match(detail.dialog.textContent ?? "", /SFL Local review：not_reviewed/u);
+  assert.match(detail.dialog.textContent ?? "", /SFL code execution：false/u);
   assert.equal(detail.dialog.querySelector<HTMLDetailsElement>(".detail-technical")?.open, false);
   assert.equal(detail.exactPreviewButton.disabled, false);
   assert.ok(detail.exactPreviewButton.querySelector("svg.sfl-icon"));
@@ -272,18 +304,29 @@ test("thumbnail and explicit action open candidate details while the title toggl
     Array.from(cards.querySelectorAll(".source")).map((node) => node.textContent),
     ["Local Published", "FigureYa"],
   );
-  const validationSummaries = Array.from(cards.querySelectorAll(".validation-summary")).map(
-    (node) => node.textContent ?? "",
-  );
-  assert.equal(validationSummaries.length, 2);
+  assert.equal(cards.querySelectorAll(".card-context").length, 2);
   assert.ok(
-    validationSummaries.every(
-      (text) =>
-        text.includes("绘图执行：not_run（范围：unknown）") &&
-        text.includes("上游流程：not_run") &&
-        text.includes("科学验证：not_assessed"),
+    Array.from(cards.querySelectorAll(".card-context-text")).every((node) =>
+      node.textContent?.includes("Grouped bar-chart comparisons") === true,
     ),
   );
+  assert.deepEqual(
+    Array.from(cards.querySelectorAll(".card-context-label")).map((node) => node.textContent),
+    ["应用场景", "应用场景"],
+  );
+  assert.deepEqual(
+    Array.from(cards.querySelectorAll(".score")).map((node) => node.textContent),
+    ["匹配度 100", "匹配度 100"],
+  );
+  assert.ok(
+    Array.from(cards.querySelectorAll(".score")).every(
+      (node) => node.getAttribute("aria-label")?.includes("仅表示检索相关性") === true,
+    ),
+  );
+  assert.equal(cards.querySelectorAll(".provider-state").length, 0);
+  assert.equal(cards.querySelectorAll(".validation-summary").length, 0);
+  assert.equal(cards.querySelectorAll(".template-id").length, 0);
+  assert.equal(cards.querySelectorAll(".card-status").length, 0);
   (cards.querySelectorAll(".preview-button")[0] as HTMLButtonElement).click();
   (cards.querySelectorAll(".candidate-action")[1] as HTMLButtonElement).click();
   assert.deepEqual(opened, [
@@ -335,7 +378,7 @@ test("selection is visible on the card and title or blank-area clicks toggle it"
 
   const second = cards.querySelectorAll(".card")[1] as HTMLElement;
   assert.equal(second.dataset.selected, "false");
-  (second.querySelector(".description") as HTMLElement).click();
+  (second.querySelector(".card-context") as HTMLElement).click();
   assert.deepEqual(toggles, [{ templateId: "select-b", selected: true }]);
   assert.equal(second.dataset.selected, "true");
   assert.equal(
@@ -909,6 +952,59 @@ test("merged selection keeps PR27 state semantics and PR26 visual hooks together
   assert.equal(card.classList.contains("is-selected"), false);
   assert.equal(title.getAttribute("aria-pressed"), "false");
   assert.deepEqual(transitions, [true, false]);
+  window.close();
+});
+
+test("cards show only actionable preview/materialization status", () => {
+  const window = createTestWindow();
+  const document = window.document as unknown as Document;
+  const cards = document.createElement("section");
+  const empty = document.createElement("section");
+  const unavailable = candidate("org.figureya.module", "missing-preview", "missing");
+  unavailable.previewAvailable = false;
+  const referenceOnly = candidate("org.figureya.module", "reference-only", "ready");
+  referenceOnly.materializable = false;
+  renderCandidateCards({
+    document,
+    cards,
+    empty,
+    result: searchResult([unavailable, referenceOnly]),
+    onDetail() {},
+  });
+
+  assert.deepEqual(
+    Array.from(cards.querySelectorAll(".card-status")).map((node) => node.textContent),
+    ["预览不可用", "仅参考图"],
+  );
+  assert.doesNotMatch(cards.textContent ?? "", /not_run|unknown|not_assessed|SFL execution/u);
+  window.close();
+});
+
+test("cards prefer a scientific question and fall back to the application scenario", () => {
+  const window = createTestWindow();
+  const document = window.document as unknown as Document;
+  const cards = document.createElement("section");
+  const empty = document.createElement("section");
+  const question = candidate("org.figureya.module", "question-first", "ready");
+  question.application = "Application should not replace the scientific question.";
+  question.scientificQuestion = "Which treatment changes the abundance of the target cell population?";
+  const application = candidate("org.figureya.module", "application-fallback", "ready");
+  application.application = "Compare treatment groups and summarize their distribution.";
+  delete application.scientificQuestion;
+  renderCandidateCards({
+    document,
+    cards,
+    empty,
+    result: searchResult([question, application]),
+    onDetail() {},
+  });
+
+  assert.deepEqual(
+    Array.from(cards.querySelectorAll(".card-context-label")).map((node) => node.textContent),
+    ["科学问题", "应用场景"],
+  );
+  assert.match(cards.querySelectorAll(".card-context-text")[0]?.textContent ?? "", /Which treatment changes/u);
+  assert.match(cards.querySelectorAll(".card-context-text")[1]?.textContent ?? "", /Compare treatment groups/u);
   window.close();
 });
 

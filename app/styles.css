@@ -293,12 +293,30 @@ footer {
   font-weight: 750;
 }
 
-.description {
-  display: -webkit-box;
+.card-context {
+  display: grid;
+  align-content: start;
+  gap: 3px;
+  min-height: calc(4 * 1.45em + 1.2em);
   overflow: hidden;
+  margin: 0;
   color: var(--color-text-secondary, #58645d);
   font-size: 0.8rem;
   line-height: 1.45;
+  -webkit-box-orient: vertical;
+}
+
+.card-context-label {
+  display: block;
+  margin-bottom: 3px;
+  color: var(--color-text-primary, #27342d);
+  font-size: 0.7rem;
+  font-weight: 800;
+}
+
+.card-context-text {
+  display: -webkit-box;
+  overflow: hidden;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 4;
 }
@@ -318,6 +336,29 @@ footer {
   font-size: 0.67rem;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.card-status {
+  align-self: flex-start;
+  width: fit-content;
+  border-radius: 999px;
+  padding: 4px 8px;
+  background: #edf4ef;
+  color: #376553;
+  font-size: 0.7rem;
+  font-weight: 750;
+}
+
+.card-status-warning {
+  background: #fff1dd;
+  color: #9a5f18;
+}
+
+.match-note {
+  margin: 0;
+  color: #9a5f18;
+  font-size: 0.74rem;
+  line-height: 1.4;
 }
 
 .reason,
@@ -1046,6 +1087,20 @@ html[data-theme="dark"] .select-badge {
 
 html[data-theme="dark"] .candidate-title[aria-pressed="true"] {
   color: #72d7b1;
+}
+
+html[data-theme="dark"] .card-status {
+  background: #203a2d;
+  color: #a9dec0;
+}
+
+html[data-theme="dark"] .card-status-warning {
+  background: #46331f;
+  color: #f0ad5f;
+}
+
+html[data-theme="dark"] .match-note {
+  color: #f0ad5f;
 }
 
 html[data-theme="dark"] .candidate-select:hover,
