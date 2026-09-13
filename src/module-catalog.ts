@@ -961,6 +961,7 @@ export class ModuleCatalogIndex {
           exactSelector: selector,
           sourceLabel: this.catalog.provider.displayName,
           title: module.title,
+          titleEn: module.titleEn,
           retrievalScore: evidence.score,
           matchedTerms: evidence.matchedTerms.slice(0, 12),
           reasons: evidence.reasons,

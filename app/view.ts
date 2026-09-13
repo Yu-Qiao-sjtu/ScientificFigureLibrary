@@ -26,6 +26,7 @@ export interface Candidate {
   };
   sourceLabel: string;
   title: string;
+  titleEn?: string;
   retrievalScore: number;
   reasons: string[];
   warnings: string[];
@@ -413,6 +414,9 @@ export function renderCandidateCards(options: {
     headingNode.append(titleButton);
     heading.append(
       headingNode,
+      ...(candidate.titleEn?.trim()
+        ? [element(document, "span", "module-title-en", candidate.titleEn.trim())]
+        : []),
       element(
         document,
         "span",
@@ -527,6 +531,9 @@ export function openCandidateDetail(options: {
   closeButton.setAttribute("aria-label", `关闭 ${candidate.title} 详情`);
   const title = element(document, "h2", "detail-title", candidate.title);
   title.id = `detail-title-${candidate.candidateId}`;
+  const titleEn = candidate.titleEn?.trim()
+    ? element(document, "p", "detail-title-en", candidate.titleEn.trim())
+    : undefined;
   const identity = element(document, "div", "detail-identity");
   identity.append(
     element(document, "span", "source", candidate.sourceLabel),
@@ -638,7 +645,7 @@ export function openCandidateDetail(options: {
     dialog.remove();
   });
   controls.append(exactPreviewButton, confirmButton);
-  panel.append(closeButton, title, identity, preview, descriptionSection, metadata, status, controls);
+  panel.append(closeButton, title, ...(titleEn ? [titleEn] : []), identity, preview, descriptionSection, metadata, status, controls);
   dialog.append(panel);
   document.body.append(dialog);
   if (typeof dialog.showModal === "function") dialog.showModal();

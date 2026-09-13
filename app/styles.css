@@ -232,6 +232,19 @@ footer {
   line-height: 1.25;
 }
 
+.module-title-en {
+  display: block;
+  max-width: 100%;
+  margin-top: 3px;
+  overflow: hidden;
+  color: var(--color-text-secondary, #62736a);
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Consolas, monospace);
+  font-size: 0.72rem;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .candidate-title {
   display: inline;
   width: auto;
@@ -608,6 +621,16 @@ footer {
   margin: 0;
   font-size: clamp(1.25rem, 4vw, 1.8rem);
   line-height: 1.2;
+}
+
+.detail-title-en {
+  max-width: 100%;
+  margin: -8px 0 0;
+  overflow-wrap: anywhere;
+  color: var(--color-text-secondary, #62736a);
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Consolas, monospace);
+  font-size: 0.82rem;
+  line-height: 1.4;
 }
 
 .detail-identity {
