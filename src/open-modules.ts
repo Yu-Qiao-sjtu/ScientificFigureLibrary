@@ -143,4 +143,3 @@ export function catalogArchiveSources(catalog: ModuleCatalog) {
   const sources = catalog.provider.archiveSources ?? [];
   return parseArchiveTransportSources(sources, "catalog.provider.archiveSources");
 }
-
