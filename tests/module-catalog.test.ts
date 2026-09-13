@@ -226,7 +226,9 @@ test("ModuleCatalogIndex loads a healthy empty snapshot and rejects preview tamp
     validatePreviews: true,
   });
   assert.equal(loaded.catalog.modules.length, 1);
-  assert.equal((await loaded.searchAll({ query: "personal catalog scatter" }))[0]?.providerId, PERSONAL_MODULE_PROVIDER_ID);
+  const searched = (await loaded.searchAll({ query: "personal catalog scatter" }))[0];
+  assert.equal(searched?.providerId, PERSONAL_MODULE_PROVIDER_ID);
+  assert.equal(searched?.titleEn, module.titleEn);
   await fs.writeFile(path.join(root, ...module.thumbnail.path.split("/")), Buffer.from("tampered"));
   await assert.rejects(
     ModuleCatalogIndex.load(root, { expectedProviderId: PERSONAL_MODULE_PROVIDER_ID, validatePreviews: true }),

@@ -211,6 +211,7 @@ test("personal module cards keep publisher state, Local state, and thumbnail sta
   personal.searchPreviewStatus = "ready";
   personal.previewStatus = undefined;
   personal.sourceLabel = "Open Figure Modules";
+  personal.titleEn = "Personal module fixture English title";
   personal.upstreamStatus = "published";
   personal.publisherReviewStatus = "approved";
   personal.publisherExecutionStatus = "passed";
@@ -235,6 +236,8 @@ test("personal module cards keep publisher state, Local state, and thumbnail sta
     onDetail() {},
   });
   assert.match(cards.textContent ?? "", /Open Figure Modules/u);
+  assert.match(cards.textContent ?? "", /Personal module fixture English title/u);
+  assert.equal(cards.querySelectorAll(".module-title-en").length, 1);
   assert.match(cards.textContent ?? "", /匹配度 100/u);
   assert.equal(cards.querySelector(".template-id"), null);
   assert.equal(cards.querySelector(".provider-state"), null);
@@ -254,6 +257,8 @@ test("personal module cards keep publisher state, Local state, and thumbnail sta
     onRequestAgentReview() {},
   });
   assert.match(detail.dialog.textContent ?? "", /源码 commit：aaaaaaaa/u);
+  assert.match(detail.dialog.textContent ?? "", /Personal module fixture English title/u);
+  assert.equal(detail.dialog.querySelectorAll(".detail-title-en").length, 1);
   assert.match(detail.dialog.textContent ?? "", /归档 commit：bbbbbbbb/u);
   assert.match(detail.dialog.textContent ?? "", /ZIP SHA-256：cccccccc/u);
   assert.match(detail.dialog.textContent ?? "", /发布者审核状态：approved/u);

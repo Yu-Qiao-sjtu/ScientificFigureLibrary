@@ -396,6 +396,7 @@ export interface TemplateCandidate {
   materializationSelectors?: Partial<Record<MaterializeMode, ExactTemplateSelector>>;
   sourceLabel: string;
   title: string;
+  titleEn?: string;
   retrievalScore: number;
   matchedTerms: string[];
   reasons: string[];
